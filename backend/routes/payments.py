@@ -57,6 +57,9 @@ class PaymentUpdate(BaseModel):
     cheques: Optional[List[ChequeDetail]] = None
     allocations: Optional[List[PaymentAllocation]] = None
     notes: Optional[str] = None
+    payment_reference: Optional[str] = None
+    related_customer_id: Optional[str] = None
+    related_customer_name: Optional[str] = None
 
 
 async def recalc_invoice_status(invoice_id: str):
@@ -274,6 +277,12 @@ async def update_payment(payment_id: str, data: PaymentUpdate, user=Depends(get_
         update_doc["cheques"] = [c.model_dump() for c in data.cheques]
     if data.notes is not None:
         update_doc["notes"] = data.notes
+    if data.payment_reference is not None:
+        update_doc["payment_reference"] = data.payment_reference
+    if data.related_customer_id is not None:
+        update_doc["related_customer_id"] = data.related_customer_id
+    if data.related_customer_name is not None:
+        update_doc["related_customer_name"] = data.related_customer_name
     update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.payments.update_one({"id": payment_id}, {"$set": update_doc})

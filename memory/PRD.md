@@ -25,15 +25,20 @@ Repo restored from: https://github.com/shikishikibumba/Finance.git
   - Category field + Primary Supplier searchable dropdown (backend already supported).
   - History dialog: Price History tab (old/new/cost/date/user) + Invoice History tab (invoice#, customer→profile link, date, qty, price, amount).
 
-## Remaining / to verify next (per spec, many already partially built)
-- #4 Ledger consolidated multi-cheque display ("Payment by Cheque (N Cheques)")
-- #7 Supplier Reference on internal invoice/purchase detail (not on customer invoice)
-- #12/#13 Purchase Destination toggle (Warehouse vs Direct Customer)
-- #15 Invoice list filters + 6 sorts
-- #19 Default page size 20 on list views
-- Warehouse module: valuation banner (#16), search by name/code (#18), opening-stock notes (#17)
-- #5 missing-invoices-in-ledger bug (needs reproduction against live data)
-- Payment form: confirm Bank dropdown + Payment Reference + Related Customer + cheque-inventory linkage wired
+## Done this session (batch 2) — verified live
+- #15 Invoice list: Status + Customer + Date-range filters + sort (Newest/Oldest/Highest/Lowest). Client-side over fetched list.
+- #19 Invoice list pagination default 20/page ("Showing 1–20 of 109").
+- #3 Payment Reference dropdown (presets from /api/payment-references + inline add) on all payments.
+- #20 Related Customer (internal) dropdown on SUPPLIER payments. Backend PaymentUpdate extended to persist payment_reference/related_customer on edit.
+- #7 CONFIRMED already done: PurchasesPage detail shows Supplier Invoice #.
+
+## Remaining / to verify next
+- #4 Ledger consolidated multi-cheque display ("Payment by Cheque (N Cheques)") — needs reports.py ledger entry shaping.
+- #12/#13 Purchase Destination toggle (Warehouse vs Direct Customer) — needs stock model review.
+- Warehouse module: valuation banner (#16), search by name/code (#18), opening-stock notes (#17).
+- #5 missing-invoices-in-ledger bug (needs reproduction against live data).
+- Endorsed-cheque picker on supplier payments (backend supports endorsed_cheque_ids; UI picker not built).
+- Apply page-size 20 to other list views (products/purchases/payments) if desired.
 
 ## Testing note
 Automated/testing-agent runs were kept minimal to avoid writing test records into the client's LIVE Firestore. Verified via read-only UI screenshots.

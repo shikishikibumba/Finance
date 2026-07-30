@@ -30,6 +30,9 @@ const emptyForm = (payment_type = "customer") => ({
   cheques: [],
   allocations: [],
   notes: "",
+  payment_reference: "",
+  related_customer_id: "",
+  related_customer_name: "",
 });
 
 export default function PaymentsPage() {
@@ -40,6 +43,7 @@ export default function PaymentsPage() {
   const [invoices, setInvoices] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [banks, setBanks] = useState([]);
+  const [paymentRefs, setPaymentRefs] = useState([]);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("customer");
   const [loading, setLoading] = useState(true);
@@ -61,6 +65,17 @@ export default function PaymentsPage() {
     } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
   };
 
+  const addNewReferenceInline = async () => {
+    const name = window.prompt("New payment reference?");
+    if (!name || !name.trim()) return;
+    try {
+      const { data } = await API.post("/payment-references", { name: name.trim() });
+      setPaymentRefs((prev) => [...prev, data]);
+      setForm((f) => ({ ...f, payment_reference: data.name }));
+      toast.success("Reference added");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+  };
+
   const fetchPayments = useCallback(async () => {
     try {
       const { data } = await API.get("/payments", { params: { payment_type: tab, search: search || undefined } });
@@ -71,14 +86,15 @@ export default function PaymentsPage() {
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [c, s, inv, pur, bk] = await Promise.all([
-        API.get("/customers"), API.get("/suppliers"), API.get("/invoices"), API.get("/purchases"), API.get("/banks"),
+      const [c, s, inv, pur, bk, pr] = await Promise.all([
+        API.get("/customers"), API.get("/suppliers"), API.get("/invoices"), API.get("/purchases"), API.get("/banks"), API.get("/payment-references"),
       ]);
       setCustomers(c.data);
       setSuppliers(s.data);
       setInvoices(inv.data);
       setPurchases(pur.data);
       setBanks(bk.data);
+      setPaymentRefs(pr.data);
     } catch (err) { console.error(err); }
   }, []);
 
@@ -131,6 +147,9 @@ export default function PaymentsPage() {
         cheques: data.cheques || [],
         allocations: data.allocations || [],
         notes: data.notes || "",
+        payment_reference: data.payment_reference || "",
+        related_customer_id: data.related_customer_id || "",
+        related_customer_name: data.related_customer_name || "",
       });
       setDialogOpen(true);
     } catch (err) { toast.error("Failed to load payment"); }
@@ -231,6 +250,9 @@ export default function PaymentsPage() {
         amount: parseFloat(a.amount),
       })),
       notes: form.notes,
+      payment_reference: form.payment_reference || "",
+      related_customer_id: form.payment_type === "supplier" ? (form.related_customer_id || "") : "",
+      related_customer_name: form.payment_type === "supplier" ? (form.related_customer_name || "") : "",
     };
 
     try {
@@ -382,6 +404,30 @@ export default function PaymentsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase tracking-wider">Payment Reference</Label>
+                <Select value={form.payment_reference || ""} onValueChange={(v) => v === "__add__" ? addNewReferenceInline() : setForm(f => ({ ...f, payment_reference: v }))}>
+                  <SelectTrigger data-testid="payment-reference-select"><SelectValue placeholder="Select reference (optional)" /></SelectTrigger>
+                  <SelectContent>
+                    {paymentRefs.map((r) => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}
+                    <SelectItem value="__add__" className="text-blue-600">+ Add New Reference…</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.payment_type === "supplier" && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider">Related Customer (internal)</Label>
+                  <SearchableSelect
+                    options={customers.map(c => ({ value: c.id, label: `${c.name}${c.shop_name ? ` (${c.shop_name})` : ""}` }))}
+                    value={form.related_customer_id}
+                    onSelect={(v) => setForm(f => ({ ...f, related_customer_id: v, related_customer_name: customers.find(c => c.id === v)?.name || "" }))}
+                    placeholder="Link a customer (optional)..."
+                  />
+                </div>
+              )}
             </div>
 
             {form.payment_method === "cheque" && (

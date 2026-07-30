@@ -27,10 +27,20 @@ export default function InvoicesPage() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [settleDialog, setSettleDialog] = useState({ open: false, invoice: null, amount: "", note: "" });
   const [editDialog, setEditDialog] = useState({ open: false, invoice: null });
+  const [customers, setCustomers] = useState([]);
+  const [custFilter, setCustFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   useEffect(() => {
     API.get("/products").then(r => setProducts(r.data)).catch(() => {});
+    API.get("/customers").then(r => setCustomers(r.data)).catch(() => {});
   }, []);
+
+  useEffect(() => { setPage(1); }, [search, statusFilter, custFilter, dateFrom, dateTo, sortBy]);
 
   const fetchInvoices = useCallback(async () => {
     try {
@@ -139,6 +149,26 @@ export default function InvoicesPage() {
 
   const editTotal = (editDialog.invoice?.items || []).reduce((s, i) => s + (parseFloat(i.quantity) || 0) * (parseFloat(i.unit_price) || 0), 0);
 
+  const filtered = invoices.filter((inv) => {
+    if (custFilter !== "all" && inv.customer_id !== custFilter) return false;
+    const d = (inv.created_at || "").slice(0, 10);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  });
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "newest") return (b.created_at || "").localeCompare(a.created_at || "");
+    if (sortBy === "oldest") return (a.created_at || "").localeCompare(b.created_at || "");
+    const av = a.net_amount != null ? a.net_amount : (a.total_amount || 0);
+    const bv = b.net_amount != null ? b.net_amount : (b.total_amount || 0);
+    if (sortBy === "highest") return bv - av;
+    if (sortBy === "lowest") return av - bv;
+    return 0;
+  });
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageItems = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <div className="space-y-6" data-testid="invoices-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -146,13 +176,13 @@ export default function InvoicesPage() {
         <div className="text-xs text-muted-foreground" data-testid="invoices-info">Invoices are generated from Orders. Go to Orders → "Invoice" to create one.</div>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap items-end">
         <div className="relative max-w-sm flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search invoices..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" data-testid="invoice-search-input" />
+          <Input placeholder="Search (invoice #, customer, order #)..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" data-testid="invoice-search-input" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-36" data-testid="invoice-status-filter"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-32" data-testid="invoice-status-filter"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="unpaid">Unpaid</SelectItem>
@@ -160,23 +190,50 @@ export default function InvoicesPage() {
             <SelectItem value="paid">Paid</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={custFilter} onValueChange={setCustFilter}>
+          <SelectTrigger className="w-48" data-testid="invoice-customer-filter"><SelectValue placeholder="All Customers" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Customers</SelectItem>
+            {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.shop_name || c.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <div>
+          <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">From</Label>
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-10 w-[150px]" data-testid="invoice-date-from" />
+        </div>
+        <div>
+          <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To</Label>
+          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-10 w-[150px]" data-testid="invoice-date-to" />
+        </div>
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="w-44" data-testid="invoice-sort-select"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="newest">Newest First</SelectItem>
+            <SelectItem value="oldest">Oldest First</SelectItem>
+            <SelectItem value="highest">Highest Value</SelectItem>
+            <SelectItem value="lowest">Lowest Value</SelectItem>
+          </SelectContent>
+        </Select>
+        {(custFilter !== "all" || dateFrom || dateTo) && (
+          <Button variant="outline" size="sm" className="h-10" onClick={() => { setCustFilter("all"); setDateFrom(""); setDateTo(""); }} data-testid="invoice-clear-filters">Clear</Button>
+        )}
       </div>
 
       <Card className="border shadow-sm">
         <CardContent className="p-0">
           {loading ? (
             <div className="p-8 text-center text-muted-foreground">Loading...</div>
-          ) : invoices.length === 0 ? (
+          ) : sorted.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <Receipt size={32} className="mx-auto mb-2 opacity-30" />
-              No invoices yet. Generate one from an order.
+              No invoices match the current filters.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="data-table w-full">
                 <thead><tr><th>Invoice #</th><th>Customer</th><th>Order #</th><th>Amount</th><th>Net Value</th><th>Status</th><th>Date</th><th className="w-56">Actions</th></tr></thead>
                 <tbody>
-                  {invoices.map(inv => (
+                  {pageItems.map(inv => (
                     <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
                       <td className="font-medium">{inv.invoice_number}</td>
                       <td>
@@ -221,6 +278,19 @@ export default function InvoicesPage() {
           )}
         </CardContent>
       </Card>
+
+      {sorted.length > 0 && (
+        <div className="flex items-center justify-between text-sm" data-testid="invoice-pagination">
+          <span className="text-muted-foreground" data-testid="invoice-page-info">
+            Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, sorted.length)} of {sorted.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} data-testid="invoice-prev-page">Previous</Button>
+            <span className="px-2 text-muted-foreground">Page {currentPage} / {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} data-testid="invoice-next-page">Next</Button>
+          </div>
+        </div>
+      )}
 
       {/* Print/View Invoice Dialog */}
       <Dialog open={printOpen} onOpenChange={setPrintOpen}>
