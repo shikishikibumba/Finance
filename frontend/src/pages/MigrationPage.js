@@ -50,15 +50,27 @@ export default function MigrationPage() {
   const [obForm, setObForm] = useState({ entity_type: "customer", entity_id: "", entity_name: "", opening_balance: 0, opening_balance_date: "" });
 
   const [purchases, setPurchases] = useState([]);
+  const [banks, setBanks] = useState([]);
 
   const load = useCallback(async () => {
     try {
-      const [c, s, p, i, pur, rs] = await Promise.all([
-        API.get("/customers"), API.get("/suppliers"), API.get("/products"), API.get("/invoices"), API.get("/purchases"), API.get("/returned-stock")
+      const [c, s, p, i, pur, rs, bk] = await Promise.all([
+        API.get("/customers"), API.get("/suppliers"), API.get("/products"), API.get("/invoices"), API.get("/purchases"), API.get("/returned-stock"), API.get("/banks")
       ]);
-      setCustomers(c.data); setSuppliers(s.data); setProducts(p.data); setInvoices(i.data); setPurchases(pur.data); setReturnedStock(rs.data);
+      setCustomers(c.data); setSuppliers(s.data); setProducts(p.data); setInvoices(i.data); setPurchases(pur.data); setReturnedStock(rs.data); setBanks(bk.data);
     } catch (err) { console.error(err); }
   }, []);
+
+  const addNewBankInline = async () => {
+    const name = window.prompt("New bank name?");
+    if (!name || !name.trim()) return null;
+    try {
+      const { data } = await API.post("/banks", { name: name.trim() });
+      setBanks((prev) => [...prev, data]);
+      toast.success("Bank added");
+      return data.name;
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); return null; }
+  };
   useEffect(() => { load(); }, [load]);
 
   const customerOptions = customers.map(c => ({ value: c.id, label: `${c.name}${c.shop_name ? ` (${c.shop_name})` : ""}` }));
@@ -456,7 +468,15 @@ export default function MigrationPage() {
                 {payForm.cheques.length === 0 ? (
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label className="text-xs">Cheque No.</Label><Input value={payForm.cheque_number} onChange={e => setPayForm(f => ({ ...f, cheque_number: e.target.value }))} placeholder="Cheque #" /></div>
-                    <div><Label className="text-xs">Bank</Label><Input value={payForm.bank_name} onChange={e => setPayForm(f => ({ ...f, bank_name: e.target.value }))} placeholder="Bank" /></div>
+                    <div><Label className="text-xs">Bank</Label>
+                      <Select value={payForm.bank_name || ""} onValueChange={async v => { if (v === "__add__") { const n = await addNewBankInline(); if (n) setPayForm(f => ({ ...f, bank_name: n })); } else setPayForm(f => ({ ...f, bank_name: v })); }}>
+                        <SelectTrigger data-testid="hist-pay-bank"><SelectValue placeholder="Select bank" /></SelectTrigger>
+                        <SelectContent>
+                          {banks.map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
+                          <SelectItem value="__add__" className="text-blue-600">+ Add New Bank…</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="col-span-2"><Label className="text-xs">Cheque Date</Label><Input type="date" value={payForm.cheque_date} onChange={e => setPayForm(f => ({ ...f, cheque_date: e.target.value }))} /></div>
                   </div>
                 ) : (
@@ -468,7 +488,13 @@ export default function MigrationPage() {
                         <div className="grid grid-cols-2 gap-2">
                           <Input type="number" placeholder="Amount" value={c.amount} onChange={e => updPayCheque(idx, "amount", e.target.value)} className="h-8 text-sm" />
                           <Input placeholder="Cheque #" value={c.cheque_number} onChange={e => updPayCheque(idx, "cheque_number", e.target.value)} className="h-8 text-sm" />
-                          <Input placeholder="Bank" value={c.bank_name} onChange={e => updPayCheque(idx, "bank_name", e.target.value)} className="h-8 text-sm" />
+                          <Select value={c.bank_name || ""} onValueChange={async v => { if (v === "__add__") { const n = await addNewBankInline(); if (n) updPayCheque(idx, "bank_name", n); } else updPayCheque(idx, "bank_name", v); }}>
+                            <SelectTrigger className="h-8 text-sm" data-testid={`hist-pay-cheque-${idx}-bank`}><SelectValue placeholder="Bank" /></SelectTrigger>
+                            <SelectContent>
+                              {banks.map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
+                              <SelectItem value="__add__" className="text-blue-600">+ Add New Bank…</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <Input type="date" value={c.cheque_date} onChange={e => updPayCheque(idx, "cheque_date", e.target.value)} className="h-8 text-sm" />
                         </div>
                       </div>
