@@ -32,13 +32,16 @@ Repo restored from: https://github.com/shikishikibumba/Finance.git
 - #20 Related Customer (internal) dropdown on SUPPLIER payments. Backend PaymentUpdate extended to persist payment_reference/related_customer on edit.
 - #7 CONFIRMED already done: PurchasesPage detail shows Supplier Invoice #.
 
-## Remaining / to verify next
-- #4 Ledger consolidated multi-cheque display ("Payment by Cheque (N Cheques)") — needs reports.py ledger entry shaping.
-- #12/#13 Purchase Destination toggle (Warehouse vs Direct Customer) — needs stock model review.
-- Warehouse module: valuation banner (#16), search by name/code (#18), opening-stock notes (#17).
-- #5 missing-invoices-in-ledger bug (needs reproduction against live data).
-- Endorsed-cheque picker on supplier payments (backend supports endorsed_cheque_ids; UI picker not built).
-- Apply page-size 20 to other list views (products/purchases/payments) if desired.
+## Done this session (batch 3) — verified live
+- #4 Ledger multi-cheque collapse: reports.py `_payment_ledger_desc` → "Payment by Cheque (N Cheques)"; LedgerPage row expands to a cheque drill-down (#/bank/date/amount). Balances untouched.
+- Endorsed-cheque picker on supplier payments (checkbox list of Available inventory cheques → endorsed_cheque_ids). Renders only when Available cheques exist.
+- #12/#13 Purchase Destination field (Warehouse Stock / Direct Customer Supply): purchases.py Create/Update + PurchasesPage form + detail. Default "warehouse" (backward compatible).
+- Printed invoice line-items per page 10 → 20 (print.js ITEMS_PER_PAGE).
+
+## Remaining / not done (honest)
+- #16/#17/#18 Warehouse valuation banner / search / opening-stock notes: BLOCKED — system has NO product on-hand stock model (only a returned_stock pool). Needs a stock-quantity ledger design decision before building. `destination` field now lays groundwork (warehouse purchases are tagged).
+- #5 missing-invoices-in-ledger: ledger fetches invoices by customer_id and filters by opening_balance_date/date range. Need a specific customer + invoice # that's missing to repro against live data.
+- Endorsed cheques only applied on payment CREATE (PaymentUpdate doesn't re-endorse on edit) — acceptable.
 
 ## Testing note
 Automated/testing-agent runs were kept minimal to avoid writing test records into the client's LIVE Firestore. Verified via read-only UI screenshots.

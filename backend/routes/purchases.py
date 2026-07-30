@@ -27,6 +27,7 @@ class PurchaseCreate(BaseModel):
     notes: Optional[str] = ""
     purchase_number: Optional[str] = None   # manual override for historical data
     created_at: Optional[str] = None         # backdated
+    destination: Optional[str] = "warehouse"  # v1.1 #12/#13: "warehouse" | "direct_customer"
 
 
 class PurchaseItemUpdate(BaseModel):
@@ -42,6 +43,7 @@ class PurchaseUpdate(BaseModel):
     supplier_invoice_number: Optional[str] = None
     notes: Optional[str] = None
     created_at: Optional[str] = None
+    destination: Optional[str] = None
     items: Optional[List[PurchaseItemUpdate]] = None
 
 
@@ -126,6 +128,7 @@ async def create_purchase(data: PurchaseCreate, user=Depends(get_current_user)):
         "auto_generated": False,
         "manual_number": bool(data.purchase_number),
         "notes": data.notes or "",
+        "destination": data.destination or "warehouse",
         "created_at": data.created_at or datetime.now(timezone.utc).isoformat()
     }
     await db.purchases.insert_one(doc)
@@ -167,6 +170,8 @@ async def update_purchase(purchase_id: str, data: PurchaseUpdate, user=Depends(g
         update["notes"] = data.notes
     if data.created_at is not None:
         update["created_at"] = data.created_at
+    if data.destination is not None:
+        update["destination"] = data.destination
     if data.items is not None:
         items = []
         total = 0

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import API from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, Calendar, ArrowLeft, Printer } from "lucide-react";
+import { BookOpen, Calendar, ArrowLeft, Printer, ChevronRight, ChevronDown } from "lucide-react";
 import { printHtml, escapeHtml, fmtRs } from "@/lib/printer";
 
 const fmt = (n) =>
@@ -24,6 +24,7 @@ export default function LedgerPage() {
   const [dateTo, setDateTo] = useState(search.get("to") || "");
   const [ledger, setLedger] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState({});
 
   const endpoint = type === "supplier" ? "supplier-ledger" : "customer-ledger";
   const label = type === "supplier" ? "Supplier" : "Customer";
@@ -223,8 +224,12 @@ export default function LedgerPage() {
                   </td>
                   <td className="text-right font-medium">Rs. {fmt(ledger.opening_balance)}</td>
                 </tr>
-                {(ledger.entries || []).map((e, idx) => (
-                  <tr key={idx} data-testid={`ledger-row-${idx}`}>
+                {(ledger.entries || []).map((e, idx) => {
+                  const hasCheques = (e.cheques || []).length > 0;
+                  const isOpen = !!expanded[idx];
+                  return (
+                  <Fragment key={idx}>
+                  <tr data-testid={`ledger-row-${idx}`} className={hasCheques ? "cursor-pointer hover:bg-muted/40" : ""} onClick={hasCheques ? () => setExpanded(x => ({ ...x, [idx]: !x[idx] })) : undefined}>
                     <td className="text-muted-foreground">{e.date}</td>
                     <td>
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${TYPE_COLORS[e.type] || "bg-muted"}`}>
@@ -232,12 +237,40 @@ export default function LedgerPage() {
                       </span>
                     </td>
                     <td className="font-medium">{e.ref || "—"}</td>
-                    <td className="text-xs">{e.description}</td>
+                    <td className="text-xs">
+                      <span className="inline-flex items-center gap-1">
+                        {hasCheques && (isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
+                        {e.description}
+                      </span>
+                    </td>
                     <td className="text-right">{e.debit ? `Rs. ${fmt(e.debit)}` : "—"}</td>
                     <td className="text-right">{e.credit ? `Rs. ${fmt(e.credit)}` : "—"}</td>
                     <td className="text-right font-medium">Rs. {fmt(e.balance)}</td>
                   </tr>
-                ))}
+                  {hasCheques && isOpen && (
+                    <tr className="bg-muted/30" data-testid={`ledger-cheque-detail-${idx}`}>
+                      <td colSpan="7" className="p-0">
+                        <div className="px-8 py-2">
+                          <table className="w-full text-xs">
+                            <thead><tr className="text-muted-foreground text-left"><th className="py-1">Cheque #</th><th>Bank</th><th>Cheque Date</th><th className="text-right">Amount</th></tr></thead>
+                            <tbody>
+                              {e.cheques.map((c, ci) => (
+                                <tr key={ci} data-testid={`ledger-cheque-${idx}-${ci}`}>
+                                  <td className="py-1 font-medium">{c.cheque_number || "-"}</td>
+                                  <td>{c.bank_name || "-"}</td>
+                                  <td>{c.cheque_date || "-"}</td>
+                                  <td className="text-right">Rs. {fmt(c.amount)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
                 <tr className="bg-muted/50 font-semibold">
                   <td colSpan="4" className="text-right">Totals</td>
                   <td className="text-right">Rs. {fmt(totalDebit)}</td>

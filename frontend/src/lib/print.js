@@ -9,7 +9,7 @@ const fmt = (n) =>
     n || 0
   );
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20;
 
 const escape = (s) =>
   String(s ?? "")

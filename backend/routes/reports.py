@@ -534,6 +534,31 @@ def _in_range(iso: str, date_from: Optional[str], date_to: Optional[str]) -> boo
     return True
 
 
+def _payment_ledger_desc(p: dict):
+    """Return (description, cheque_detail_list) for a payment ledger entry.
+    Collapses multi-cheque payments to 'Payment by Cheque (N Cheques)';
+    the cheque list is returned for UI drill-down."""
+    method = p.get("payment_method", "cash") or "cash"
+    cqs = [c for c in (p.get("cheques") or []) if c.get("cheque_number")]
+    if method == "cheque" and not cqs and p.get("cheque_number"):
+        cqs = [{
+            "cheque_number": p.get("cheque_number", ""),
+            "bank_name": p.get("bank_name", ""),
+            "cheque_date": p.get("cheque_date", ""),
+            "amount": p.get("amount", 0),
+        }]
+    if method == "cheque":
+        n = len(cqs)
+        if n > 1:
+            desc = f"Payment by Cheque ({n} Cheques)"
+        elif n == 1:
+            desc = f"Payment by Cheque #{cqs[0].get('cheque_number', '')}"
+        else:
+            desc = "Payment by Cheque"
+        return desc, cqs
+    return f"Payment — {method.title()}", []
+
+
 @router.get("/customer-ledger/{customer_id}")
 async def customer_ledger(customer_id: str, date_from: Optional[str] = None,
                           date_to: Optional[str] = None, user=Depends(get_current_user)):
@@ -567,21 +592,16 @@ async def customer_ledger(customer_id: str, date_from: Optional[str] = None,
     for p in payments:
         if not _in_range(p.get("created_at", ""), effective_from, date_to):
             continue
-        cheque_hint = ""
-        if p.get("payment_method") == "cheque":
-            cqs = p.get("cheques", []) or []
-            nos = ", ".join([c.get("cheque_number", "") for c in cqs if c.get("cheque_number")])
-            if not nos and p.get("cheque_number"):
-                nos = p.get("cheque_number", "")
-            if nos:
-                cheque_hint = f" (Cheque: {nos})"
+        desc, cheque_detail = _payment_ledger_desc(p)
         entries.append({
             "date": p.get("created_at", "")[:10],
             "type": "payment",
             "ref": p.get("payment_number", "") or p.get("id", "")[:8],
-            "description": f"Payment — {p.get('payment_method', 'cash').title()}{cheque_hint}",
+            "description": desc,
             "debit": 0,
             "credit": round(float(p.get("amount", 0)), 2),
+            "payment_method": p.get("payment_method", "cash"),
+            "cheques": cheque_detail,
         })
 
     returns = await db.returns.find({"customer_id": customer_id}, {"_id": 0}).to_list(5000)
@@ -662,21 +682,16 @@ async def supplier_ledger(supplier_id: str, date_from: Optional[str] = None,
     for p in payments:
         if not _in_range(p.get("created_at", ""), effective_from, date_to):
             continue
-        cheque_hint = ""
-        if p.get("payment_method") == "cheque":
-            cqs = p.get("cheques", []) or []
-            nos = ", ".join([c.get("cheque_number", "") for c in cqs if c.get("cheque_number")])
-            if not nos and p.get("cheque_number"):
-                nos = p.get("cheque_number", "")
-            if nos:
-                cheque_hint = f" (Cheque: {nos})"
+        desc, cheque_detail = _payment_ledger_desc(p)
         entries.append({
             "date": p.get("created_at", "")[:10],
             "type": "payment",
             "ref": p.get("payment_number", "") or p.get("id", "")[:8],
-            "description": f"Payment made — {p.get('payment_method', 'cash').title()}{cheque_hint}",
+            "description": desc,
             "debit": round(float(p.get("amount", 0)), 2),
             "credit": 0,
+            "payment_method": p.get("payment_method", "cash"),
+            "cheques": cheque_detail,
         })
 
     entries.sort(key=lambda e: (e["date"], e["type"]))

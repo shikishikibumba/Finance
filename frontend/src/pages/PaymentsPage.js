@@ -33,6 +33,7 @@ const emptyForm = (payment_type = "customer") => ({
   payment_reference: "",
   related_customer_id: "",
   related_customer_name: "",
+  endorsed_cheque_ids: [],
 });
 
 export default function PaymentsPage() {
@@ -44,6 +45,7 @@ export default function PaymentsPage() {
   const [purchases, setPurchases] = useState([]);
   const [banks, setBanks] = useState([]);
   const [paymentRefs, setPaymentRefs] = useState([]);
+  const [availableCheques, setAvailableCheques] = useState([]);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("customer");
   const [loading, setLoading] = useState(true);
@@ -86,8 +88,8 @@ export default function PaymentsPage() {
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [c, s, inv, pur, bk, pr] = await Promise.all([
-        API.get("/customers"), API.get("/suppliers"), API.get("/invoices"), API.get("/purchases"), API.get("/banks"), API.get("/payment-references"),
+      const [c, s, inv, pur, bk, pr, ch] = await Promise.all([
+        API.get("/customers"), API.get("/suppliers"), API.get("/invoices"), API.get("/purchases"), API.get("/banks"), API.get("/payment-references"), API.get("/cheque-inventory", { params: { status: "Available", sort: "date_asc" } }),
       ]);
       setCustomers(c.data);
       setSuppliers(s.data);
@@ -95,6 +97,7 @@ export default function PaymentsPage() {
       setPurchases(pur.data);
       setBanks(bk.data);
       setPaymentRefs(pr.data);
+      setAvailableCheques(ch.data);
     } catch (err) { console.error(err); }
   }, []);
 
@@ -150,6 +153,7 @@ export default function PaymentsPage() {
         payment_reference: data.payment_reference || "",
         related_customer_id: data.related_customer_id || "",
         related_customer_name: data.related_customer_name || "",
+        endorsed_cheque_ids: data.endorsed_cheque_ids || [],
       });
       setDialogOpen(true);
     } catch (err) { toast.error("Failed to load payment"); }
@@ -253,6 +257,7 @@ export default function PaymentsPage() {
       payment_reference: form.payment_reference || "",
       related_customer_id: form.payment_type === "supplier" ? (form.related_customer_id || "") : "",
       related_customer_name: form.payment_type === "supplier" ? (form.related_customer_name || "") : "",
+      endorsed_cheque_ids: form.payment_type === "supplier" ? (form.endorsed_cheque_ids || []) : [],
     };
 
     try {
@@ -429,6 +434,27 @@ export default function PaymentsPage() {
                 </div>
               )}
             </div>
+
+            {form.payment_type === "supplier" && availableCheques.length > 0 && (
+              <div className="border rounded-sm bg-[#F8FAFC] p-3 space-y-2" data-testid="endorse-cheque-section">
+                <Label className="text-xs font-bold uppercase tracking-wider">Endorse Customer Cheques (optional)</Label>
+                <p className="text-[11px] text-muted-foreground">Pay this supplier using available customer cheques from inventory. Endorsed cheques are auto-linked in Cheque Inventory.</p>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {availableCheques.map((cq) => {
+                    const checked = (form.endorsed_cheque_ids || []).includes(cq.id);
+                    return (
+                      <label key={cq.id} className="flex items-center gap-2 text-xs bg-white border rounded-sm px-2 py-1.5 cursor-pointer" data-testid={`endorse-cheque-${cq.id}`}>
+                        <input type="checkbox" checked={checked} onChange={(e) => setForm(f => ({ ...f, endorsed_cheque_ids: e.target.checked ? [...(f.endorsed_cheque_ids || []), cq.id] : (f.endorsed_cheque_ids || []).filter(x => x !== cq.id) }))} data-testid={`endorse-cheque-cb-${cq.id}`} />
+                        <span className="font-medium">#{cq.cheque_number}</span>
+                        <span className="text-muted-foreground">{cq.bank || "-"}</span>
+                        <span className="text-muted-foreground">· {cq.customer_name || "-"}</span>
+                        <span className="ml-auto font-medium">Rs. {fmt(cq.amount)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {form.payment_method === "cheque" && (
               <div className="border rounded-sm bg-[#F8FAFC] p-3 space-y-3" data-testid="cheque-section">

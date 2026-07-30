@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { toast } from "sonner";
 import { Plus, Search, Trash2, FileText, X, Eye, Pencil } from "lucide-react";
@@ -23,7 +24,7 @@ export default function PurchasesPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ supplier_id: "", supplier_name: "", order_id: "", order_number: "", supplier_invoice_number: "", items: [], notes: "" });
+  const [form, setForm] = useState({ supplier_id: "", supplier_name: "", order_id: "", order_number: "", supplier_invoice_number: "", destination: "warehouse", items: [], notes: "" });
 
   const fetchPurchases = useCallback(async () => {
     try {
@@ -50,7 +51,7 @@ export default function PurchasesPage() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ supplier_id: "", supplier_name: "", order_id: "", order_number: "", supplier_invoice_number: "", items: [], notes: "" });
+    setForm({ supplier_id: "", supplier_name: "", order_id: "", order_number: "", supplier_invoice_number: "", destination: "warehouse", items: [], notes: "" });
     setDialogOpen(true);
   };
 
@@ -64,6 +65,7 @@ export default function PurchasesPage() {
         order_id: data.order_id || "",
         order_number: data.order_number || "",
         supplier_invoice_number: data.supplier_invoice_number || "",
+        destination: data.destination || "warehouse",
         items: (data.items || []).map(i => ({
           product_id: i.product_id, product_name: i.product_name,
           quantity: i.quantity, cost_price: i.cost_price,
@@ -112,6 +114,7 @@ export default function PurchasesPage() {
           supplier_name: form.supplier_name,
           supplier_invoice_number: form.supplier_invoice_number,
           notes: form.notes,
+          destination: form.destination || "warehouse",
           items: form.items.map(i => ({
             product_id: i.product_id,
             product_name: i.product_name,
@@ -232,6 +235,16 @@ export default function PurchasesPage() {
                 <Label className="text-xs font-bold uppercase tracking-wider">Linked Order (optional)</Label>
                 <SearchableSelect options={orderOptions} value={form.order_id} onSelect={selectOrder} placeholder="Link to order..." />
               </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase tracking-wider">Destination</Label>
+                <Select value={form.destination || "warehouse"} onValueChange={(v) => setForm(f => ({ ...f, destination: v }))}>
+                  <SelectTrigger data-testid="purchase-destination-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="warehouse">Warehouse Stock</SelectItem>
+                    <SelectItem value="direct_customer">Direct Customer Supply</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {editing && (
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase tracking-wider">Date</Label>
@@ -302,6 +315,10 @@ export default function PurchasesPage() {
                   <p className="font-medium">
                     {selected.linked_invoice_number ? `Invoice ${selected.linked_invoice_number}` : selected.order_number || "—"}
                   </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Destination</p>
+                  <p className="font-medium" data-testid="purchase-detail-destination">{(selected.destination || "warehouse") === "direct_customer" ? "Direct Customer Supply" : "Warehouse Stock"}</p>
                 </div>
               </div>
               <div className="border-t pt-3">
