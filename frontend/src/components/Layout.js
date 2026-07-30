@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   LayoutDashboard, Users, Truck, Package, ShoppingCart,
   FileText, Receipt, CreditCard, BarChart3, LineChart, RotateCcw, History, LogOut, Menu,
-  Sun, Moon, Settings as SettingsIcon, Send, ShieldCheck, Banknote, Landmark,
+  Sun, Moon, Settings as SettingsIcon, Send, ShieldCheck, Banknote, Landmark, Warehouse,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { to: "/products", icon: Package, label: "Products" },
   { to: "/orders", icon: ShoppingCart, label: "Orders" },
   { to: "/purchases", icon: FileText, label: "Purchases" },
+  { to: "/warehouse", icon: Warehouse, label: "Warehouse" },
   { to: "/invoices", icon: Receipt, label: "Invoices" },
   { to: "/payments", icon: CreditCard, label: "Payments" },
   { to: "/returns", icon: RotateCcw, label: "Returns" },

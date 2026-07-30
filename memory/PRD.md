@@ -38,10 +38,16 @@ Repo restored from: https://github.com/shikishikibumba/Finance.git
 - #12/#13 Purchase Destination field (Warehouse Stock / Direct Customer Supply): purchases.py Create/Update + PurchasesPage form + detail. Default "warehouse" (backward compatible).
 - Printed invoice line-items per page 10 → 20 (print.js ITEMS_PER_PAGE).
 
-## Remaining / not done (honest)
-- #16/#17/#18 Warehouse valuation banner / search / opening-stock notes: BLOCKED — system has NO product on-hand stock model (only a returned_stock pool). Needs a stock-quantity ledger design decision before building. `destination` field now lays groundwork (warehouse purchases are tagged).
-- #5 missing-invoices-in-ledger: ledger fetches invoices by customer_id and filters by opening_balance_date/date range. Need a specific customer + invoice # that's missing to repro against live data.
-- Endorsed cheques only applied on payment CREATE (PaymentUpdate doesn't re-endorse on edit) — acceptable.
+## Done this session (batch 4) — Warehouse module, verified live
+- Stock model decided with user: warehouse on-hand = unified `returned_stock` pool from 3 sources — opening stock, customer returns, and warehouse-recharge purchases.
+- purchases.py: destination=="warehouse" now inserts sellable stock lots (source=warehouse_purchase, linked by purchase_id) via `_sync_warehouse_stock`; delete/edit resync unused lots (`_remove_warehouse_stock`). Consumption auto-tracked by existing sell-from-stock (`quantity_used`). No accounting/payable change.
+- New backend `routes/warehouse.py` GET /api/warehouse/stock → per-product on_hand, unit_cost, total_value, grand total, + lot breakdown; search by name/code. Registered in server.py.
+- New WarehousePage.js (+ route + nav "Warehouse"): valuation banner (Rs. 620,560 · 25 products · 376 units on live data), search (#18), grand-total footer (#16), expandable lots with date/source/opening-qty/used/remaining/cost/notes (#17 opening-stock notes).
+
+## Remaining / not done
+- #5 missing-invoices-in-ledger: still needs a specific customer + invoice # to reproduce on live data.
+- Endorsed cheques only applied on payment CREATE (not on edit) — acceptable.
+- Note: products have no dedicated "code" field, so warehouse/product search matches name (and internal id).
 
 ## Testing note
 Automated/testing-agent runs were kept minimal to avoid writing test records into the client's LIVE Firestore. Verified via read-only UI screenshots.

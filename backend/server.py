@@ -72,6 +72,7 @@ from routes.banks import router as banks_router, seed_banks
 from routes.payment_references import router as payment_references_router
 from routes.cheque_inventory import router as cheque_inventory_router
 from routes.audit_logs import router as audit_logs_router
+from routes.warehouse import router as warehouse_router
 
 app.include_router(customers_router)
 app.include_router(suppliers_router)
@@ -92,6 +93,7 @@ app.include_router(banks_router)
 app.include_router(payment_references_router)
 app.include_router(cheque_inventory_router)
 app.include_router(audit_logs_router)
+app.include_router(warehouse_router)
 
 
 @app.get("/api/health")

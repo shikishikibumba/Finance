@@ -26,6 +26,7 @@ import UsersPage from "@/pages/UsersPage";
 import ChequeInventoryPage from "@/pages/ChequeInventoryPage";
 import AuditTrailPage from "@/pages/AuditTrailPage";
 import BanksPage from "@/pages/BanksPage";
+import WarehousePage from "@/pages/WarehousePage";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -63,6 +64,7 @@ function AppRoutes() {
         <Route path="cheque-inventory" element={<ChequeInventoryPage />} />
         <Route path="audit-trail" element={<AuditTrailPage />} />
         <Route path="banks" element={<BanksPage />} />
+        <Route path="warehouse" element={<WarehousePage />} />
       </Route>
     </Routes>
   );

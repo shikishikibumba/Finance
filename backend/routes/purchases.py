@@ -59,6 +59,49 @@ async def _resolve_purchase_number(manual: Optional[str]) -> str:
     return f"PUR-{seq:04d}"
 
 
+async def _sync_warehouse_stock(purchase: dict):
+    """Register warehouse-destination purchase items as sellable on-hand stock
+    in the returned_stock pool (source=warehouse_purchase). Idempotent per
+    (purchase_id, product_id)."""
+    existing = await db.returned_stock.find(
+        {"source": "warehouse_purchase", "purchase_id": purchase["id"]}, {"_id": 0}
+    ).to_list(1000)
+    existing_pids = {e.get("product_id") for e in existing}
+    for it in purchase.get("items", []):
+        if it.get("product_id") in existing_pids:
+            continue
+        await db.returned_stock.insert_one({
+            "id": str(uuid.uuid4()),
+            "product_id": it.get("product_id"),
+            "product_name": it.get("product_name"),
+            "quantity_available": float(it.get("quantity", 0) or 0),
+            "quantity_used": 0.0,
+            "cost_price": float(it.get("cost_price", 0) or 0),
+            "unit_price": 0.0,
+            "source": "warehouse_purchase",
+            "purchase_id": purchase["id"],
+            "purchase_number": purchase.get("purchase_number", ""),
+            "supplier_name": purchase.get("supplier_name", ""),
+            "return_id": "",
+            "invoice_id": "",
+            "customer_id": "",
+            "customer_name": "",
+            "notes": f"Warehouse purchase {purchase.get('purchase_number','')}",
+            "created_at": purchase.get("created_at") or datetime.now(timezone.utc).isoformat(),
+        })
+
+
+async def _remove_warehouse_stock(purchase_id: str):
+    """Delete UNUSED warehouse-purchase stock lots for a purchase. Lots already
+    consumed (quantity_used>0) are preserved to protect stock integrity."""
+    lots = await db.returned_stock.find(
+        {"source": "warehouse_purchase", "purchase_id": purchase_id}, {"_id": 0}
+    ).to_list(1000)
+    for lot in lots:
+        if float(lot.get("quantity_used", 0) or 0) <= 0:
+            await db.returned_stock.delete_one({"id": lot["id"]})
+
+
 @router.get("")
 async def list_purchases(search: Optional[str] = None, supplier_id: Optional[str] = None, user=Depends(get_current_user)):
     query = {}
@@ -134,6 +177,9 @@ async def create_purchase(data: PurchaseCreate, user=Depends(get_current_user)):
     await db.purchases.insert_one(doc)
     doc.pop("_id", None)
 
+    if (doc.get("destination") or "warehouse") == "warehouse":
+        await _sync_warehouse_stock(doc)
+
     # If linked to order, advance item statuses to "ordered" where matching
     if data.order_id:
         order = await db.orders.find_one({"id": data.order_id}, {"_id": 0})
@@ -192,11 +238,17 @@ async def update_purchase(purchase_id: str, data: PurchaseUpdate, user=Depends(g
     if not update:
         raise HTTPException(status_code=400, detail="No fields to update")
     await db.purchases.update_one({"id": purchase_id}, {"$set": update})
-    return await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
+    updated_doc = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
+    if "items" in update or "destination" in update:
+        await _remove_warehouse_stock(purchase_id)
+        if (updated_doc.get("destination") or "warehouse") == "warehouse":
+            await _sync_warehouse_stock(updated_doc)
+    return updated_doc
 
 
 @router.delete("/{purchase_id}")
 async def delete_purchase(purchase_id: str, user=Depends(get_current_user)):
+    await _remove_warehouse_stock(purchase_id)
     result = await db.purchases.delete_one({"id": purchase_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Purchase not found")
