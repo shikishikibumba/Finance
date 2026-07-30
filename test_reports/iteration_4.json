@@ -1,0 +1,60 @@
+{
+  "summary": "Full backend + frontend validation of Commercial Trading v1.1.0 additive enhancements against the restored FastAPI + Firestore + Firebase Auth stack. Added /app/backend/tests/test_v1_1_0.py (16 pytest cases) covering banks seed & CRUD, payment references, cheque inventory (list/due/own/status transitions), audit logs (meta / listing / admin-guard), product dup-guard + primary supplier + price/sales history, and payment auto-hook (customer cheque -> cheque_inventory) + supplier endorsement (Available -> Issued to Supplier). ALL 16 BACKEND TESTS PASS. Frontend UI spot-checked with Playwright against the preview URL: login OK, sidebar shows Cheque Inventory / Banks / Audit Trail (admin), Banks page shows 11 seeded banks each with a 'Seeded' badge, add-bank persists, Cheque Inventory renders with ci-status-filter / ci-sort / add-own-cheque-btn, Audit Trail admin filters present, Invoice preview dialog now includes the Returns Policy + Credit Terms block under data-testid=invoice-terms, Payment dialog cheque bank field is a Select populated from /api/banks with '+ Add New Bank…' option. ONE CRITICAL DASHBOARD PERFORMANCE ISSUE FOUND: GET /api/dashboard/summary takes ~309s (5 minutes) to respond — the dashboard stays in Skeleton state indefinitely and, as a consequence, the new v1.1.0 'customer-cheques-due' and 'supplier-cheques-due' panels are effectively invisible on first load (they only render after loading=false, which only happens once summary responds).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/dashboard/summary",
+        "issue": "Response time ~309s (measured against localhost:8001 with admin ID token). Blocks the dashboard skeleton state; keeps ChequeDuePanels (customer-cheques-due / supplier-cheques-due) hidden until it resolves. This makes the new v1.1.0 dashboard cheque panels effectively invisible for the entire wait window. Not caused by v1.1.0 code directly, but v1.1.0 requirements list dashboard visibility as a checkpoint. Likely a Firestore aggregation cost / lack of indexes.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "DashboardPage / ChequeDuePanels",
+        "issue": "Cheque due panels are rendered inside the same component that gates on /api/dashboard/summary loading state. When that endpoint is slow, panels are unreachable. Suggestion: mount ChequeDuePanels outside the loading gate so they always render.",
+        "selector": "[data-testid=\"customer-cheques-due\"], [data-testid=\"supplier-cheques-due\"]",
+        "priority": "HIGH"
+      },
+      {
+        "component": "AuditTrailPage",
+        "issue": "React key warning: 'Each child in a list should have a unique \"key\" prop. Check the render method of TableBody.' (audit-row-<id> rows). Cosmetic but should be fixed.",
+        "selector": "[data-testid^=\"audit-row-\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_v1_1_0.py",
+    "/app/test_reports/pytest/v1_1_0_results.xml"
+  ],
+  "action_items": [
+    "Fix /api/dashboard/summary latency (currently ~309s). Investigate aggregations over invoices/payments/returns collections in routes/dashboard.py; use bounded to_list windows, denormalized totals, or a cached materialised view.",
+    "Move ChequeDuePanels rendering outside the DashboardPage `if (loading) return skeleton` gate so the cheques-due panels are visible even while summary metrics are loading.",
+    "Fix React key warning in AuditTrailPage TableBody rows (ensure each row uses unique key)."
+  ],
+  "critical_code_review_comments": [
+    "routes/cheque_inventory.py: /due endpoint fetches up to 5000 docs then filters in Python — fine for now but will not scale; add an indexed cheque_date field on Firestore when volume grows.",
+    "routes/banks.py + payment_references.py: uniqueness check pulls up to 500 docs into memory. Acceptable for the small bank list but should be replaced with a case-insensitive indexed lookup for larger dictionaries.",
+    "routes/payments.py create_payment(): the cheque-inventory hook silently swallows ALL exceptions (except HTTPException) — a Firestore write failure while auto-creating cheque records will leave the payment saved but cheque_inventory_id missing. Consider logging the exception.",
+    "audit.py log_audit swallows exceptions silently — good for uptime but makes silent audit-loss possible. Log to logger.warning at minimum.",
+    "DashboardPage.js: gating cheque-due panels behind the same loading flag as summary metrics couples them to a slow endpoint; decouple them (see action item)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_v1_1_0.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 v1.1.0 tests pass)",
+    "frontend": "~85% (all v1.1.0 pages/testids present and functional; dashboard cheque panels blocked by slow /dashboard/summary)"
+  },
+  "test_credentials": "admin@example.com / admin123 — Firebase Auth (works). Backend tests obtain an ID token from https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword using REACT_APP_FIREBASE_API_KEY.",
+  "seed_data_creation": "Tests create TEST_-prefixed banks, payment references, cheques, products, suppliers, customers, and payments; each test cleans up the resources it owns except the two payments in the endorsement path and the endorsed cheque (kept for cross-test verification). UI test additionally created ~2 UITEST_Bank_* rows in banks (see Banks page).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend v1.1.0 fully covered by /app/backend/tests/test_v1_1_0.py — run: pytest /app/backend/tests/test_v1_1_0.py -v (needs ~55s). Regression suites from previous iterations (test_phase7.py, test_phase8_9.py, test_phase10.py) still relevant. Frontend blocker to re-verify: /api/dashboard/summary must be < 5s before the cheques-due panels can be validated via UI on the dashboard.",
+  "rca of the issue": "/api/dashboard/summary is doing heavy Firestore aggregations across invoices, payments, returns collections without an in-memory cache or pre-computed materialised view. Because Firestore adapter falls back to in-memory operators for many $-ops, the endpoint effectively walks every doc for every metric. Time ballooned from acceptable (~seconds on Mongo) to ~309s on Firestore. Repro: `curl -w '%{time_total}\\n' http://localhost:8001/api/dashboard/summary -H 'Authorization: Bearer <id_token>'` → 309s HTTP 200. Mitigation: (a) return quickly with cached values and refresh in the background, (b) split expensive metrics into individual endpoints so the dashboard can render partially, (c) index date and status fields on invoices/payments in Firestore, (d) cap doc scan sizes explicitly."
+}
