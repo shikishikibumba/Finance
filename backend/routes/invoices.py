@@ -472,3 +472,59 @@ async def manual_settle_invoice(invoice_id: str, data: ManualSettleInput, user=D
     updated["returned_amount"] = round(returned, 2)
     updated["balance"] = new_balance
     return updated
+
+
+@router.post("/{invoice_id}/unsettle")
+async def reverse_manual_settle(invoice_id: str, user=Depends(get_current_user)):
+    """Reverse a manual settlement (undo an accidental 'Settle').
+
+    Removes the most recent manual settlement entry, restoring the outstanding
+    balance and recomputing status. Only affects manual settlements — real
+    payments and returns are untouched.
+    """
+    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    history = list(invoice.get("manual_settle_history", []))
+    current_settled = round(float(invoice.get("manual_settled_amount", 0) or 0), 2)
+    if current_settled <= 0 and not history:
+        raise HTTPException(status_code=400, detail="Invoice has no manual settlement to reverse")
+
+    if history:
+        last = history.pop()
+        reversed_amount = round(float(last.get("amount", 0) or 0), 2)
+    else:
+        reversed_amount = current_settled
+    new_settled = round(max(current_settled - reversed_amount, 0.0), 2)
+
+    pay_result = await db.payments.aggregate([
+        {"$match": {"payment_type": "customer"}},
+        {"$unwind": "$allocations"},
+        {"$match": {"allocations.reference_id": invoice_id, "allocations.reference_type": "invoice"}},
+        {"$group": {"_id": None, "total": {"$sum": "$allocations.amount"}}}
+    ]).to_list(1)
+    paid = pay_result[0]["total"] if pay_result else 0
+    returned = await _compute_total_returns(invoice_id)
+    total = float(invoice.get("total_amount", 0))
+    new_balance = round(total - paid - returned - new_settled, 2)
+    if new_balance <= 0.01:
+        new_status = "paid"
+    elif (paid + new_settled + returned) > 0:
+        new_status = "partial"
+    else:
+        new_status = "unpaid"
+
+    await db.invoices.update_one(
+        {"id": invoice_id},
+        {"$set": {
+            "manual_settled_amount": new_settled,
+            "manual_settle_history": history,
+            "status": new_status,
+        }}
+    )
+    updated = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    updated["paid_amount"] = round(paid, 2)
+    updated["returned_amount"] = round(returned, 2)
+    updated["balance"] = new_balance
+    return updated

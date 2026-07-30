@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Search, Trash2, Receipt, Printer, CheckCircle2, FileMinus, Pencil, X, Plus } from "lucide-react";
+import { Search, Trash2, Receipt, Printer, CheckCircle2, FileMinus, Pencil, X, Plus, RotateCcw } from "lucide-react";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { printInvoice } from "@/lib/print";
 
@@ -96,6 +96,15 @@ export default function InvoicesPage() {
       setSettleDialog({ open: false, invoice: null, amount: "", note: "" });
       fetchInvoices();
     } catch (err) { toast.error(err.response?.data?.detail || "Failed to settle"); }
+  };
+
+  const handleUnsettle = async (inv) => {
+    if (!window.confirm(`Reverse the manual settlement on ${inv.invoice_number}? This restores the outstanding balance.`)) return;
+    try {
+      await API.post(`/invoices/${inv.id}/unsettle`);
+      toast.success("Settlement reversed");
+      fetchInvoices();
+    } catch (err) { toast.error(err.response?.data?.detail || "Failed to reverse settlement"); }
   };
 
   const openEdit = async (id) => {
@@ -263,6 +272,11 @@ export default function InvoicesPage() {
                           {inv.status !== "paid" && (
                             <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-emerald-700" onClick={() => openSettle(inv.id)} data-testid={`settle-invoice-${inv.id}`}>
                               <CheckCircle2 size={12} /> Settle
+                            </Button>
+                          )}
+                          {inv.manual_settled_amount > 0 && (
+                            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-amber-700" onClick={() => handleUnsettle(inv)} data-testid={`unsettle-invoice-${inv.id}`}>
+                              <RotateCcw size={12} /> Unsettle
                             </Button>
                           )}
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(inv.id)} data-testid={`delete-invoice-${inv.id}`}>
