@@ -269,16 +269,6 @@ export default function InvoicesPage() {
                           <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => openEdit(inv.id)} data-testid={`edit-invoice-${inv.id}`}>
                             <Pencil size={12} /> Edit
                           </Button>
-                          {inv.status !== "paid" && (
-                            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-emerald-700" onClick={() => openSettle(inv.id)} data-testid={`settle-invoice-${inv.id}`}>
-                              <CheckCircle2 size={12} /> Settle
-                            </Button>
-                          )}
-                          {inv.manual_settled_amount > 0 && (
-                            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-amber-700" onClick={() => handleUnsettle(inv)} data-testid={`unsettle-invoice-${inv.id}`}>
-                              <RotateCcw size={12} /> Unsettle
-                            </Button>
-                          )}
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(inv.id)} data-testid={`delete-invoice-${inv.id}`}>
                             <Trash2 size={14} />
                           </Button>
