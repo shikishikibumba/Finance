@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { DraftsDialog } from "@/components/DraftsDialog";
+import { Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,6 +40,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [draftId, setDraftId] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [form, setForm] = useState(emptyForm());
@@ -95,7 +98,30 @@ export default function OrdersPage() {
 
   const openNew = () => {
     setEditingId(null);
+    setDraftId(null);
     setForm(emptyForm());
+    setDialogOpen(true);
+  };
+
+  const saveDraft = async () => {
+    try {
+      const body = { kind: "order", label: form.customer_name || "Untitled order", data: form };
+      const res = draftId ? await API.put(`/drafts/${draftId}`, body) : await API.post("/drafts", body);
+      setDraftId(res.data.id);
+      toast.success("Draft saved — resume it anytime from Drafts");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed to save draft"); }
+  };
+
+  const resumeDraft = (data, id) => {
+    setEditingId(null);
+    setDraftId(id);
+    setForm({
+      customer_id: data.customer_id || "",
+      customer_name: data.customer_name || "",
+      items: data.items || [],
+      notes: data.notes || "",
+      created_at: data.created_at || "",
+    });
     setDialogOpen(true);
   };
 
@@ -189,6 +215,7 @@ export default function OrdersPage() {
       } else {
         await API.post("/orders", payload);
         toast.success("Order created");
+        if (draftId) { await API.delete(`/drafts/${draftId}`).catch(() => {}); setDraftId(null); }
       }
       setDialogOpen(false);
       fetchOrders();
@@ -248,9 +275,12 @@ export default function OrdersPage() {
     <div className="space-y-6" data-testid="orders-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight" style={{ fontFamily: 'Outfit, sans-serif' }}>Orders</h1>
-        <Button onClick={openNew} className="bg-[#0F172A] hover:bg-[#1E293B] rounded-sm gap-2" data-testid="create-order-button">
-          <Plus size={16} /> New Order
-        </Button>
+        <div className="flex gap-2">
+          <DraftsDialog kind="order" onResume={resumeDraft} />
+          <Button onClick={openNew} className="bg-[#0F172A] hover:bg-[#1E293B] rounded-sm gap-2" data-testid="create-order-button">
+            <Plus size={16} /> New Order
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
@@ -450,6 +480,11 @@ export default function OrdersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-sm">Cancel</Button>
+            {!editingId && (
+              <Button variant="outline" onClick={saveDraft} className="rounded-sm gap-1" data-testid="save-draft-button">
+                <Save size={14} /> Save as Draft
+              </Button>
+            )}
             <Button onClick={handleSave} className="bg-[#0F172A] hover:bg-[#1E293B] rounded-sm" data-testid="submit-order-button">
               {editingId ? "Save Changes" : "Create Order"}
             </Button>

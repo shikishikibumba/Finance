@@ -1,0 +1,33 @@
+{
+  "summary": "Backend-only testing of new v1.1 Drafts feature against LIVE Firestore via public URL. 5/5 pytest cases passed: create order draft with data round-trip, list filter by kind (order vs historical_invoice isolation), PUT update (label+data+updated_at), historical_invoice CRUD, DELETE + 404 on missing id. All created drafts were removed; a post-run GET /api/drafts returned 0 records so no live-data pollution.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST/PUT /api/drafts", "issue": "Empty dict data replaces stored data because route uses `data.data or {}` (falsy check). Sending {\"data\": {}} on update wipes existing data even when caller intends an empty payload — but sending explicit empty is same-outcome so low impact. Consider `data.data if data.data is not None else {}`."},
+      {"endpoint": "PUT /api/drafts/{id}", "issue": "Payload requires `kind` (DraftIn is not partial) but update handler never actually applies `data.kind` — kind cannot be changed via PUT. Documented behaviour but the required field is misleading; either make kind optional or apply it."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_drafts.py",
+    "/app/test_reports/pytest/drafts_results.xml"
+  ],
+  "action_items": [
+    "Consider fixing `data.data or {}` -> `data.data if data.data is not None else {}` in POST/PUT to avoid clobbering with empty dicts (minor).",
+    "Either honor `kind` on PUT or make it optional in DraftIn for update to reduce API confusion (minor)."
+  ],
+  "critical_code_review_comments": [
+    "routes/drafts.py: `label` and `data` use `or` fallbacks which conflate falsy values with 'not provided'. Prefer explicit None checks so callers can intentionally set label='' or data={}.",
+    "routes/drafts.py list_drafts sort uses updated_at as ISO string — works because ISO-8601 sorts lexicographically, but only for UTC timestamps with fixed format. Consider storing as datetime or documenting the invariant."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_drafts.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "seed_data_creation": "Created and DELETED test drafts inline. Order draft id and historical_invoice draft id both cleaned up. Post-run GET /api/drafts returned 0 drafts.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@example.com / admin123 via Firebase REST (id token as Bearer).",
+  "context_for_next_testing_agent": "Backend hot-reload is enabled and watches /app/backend recursively including /app/backend/tests — creating/editing a test file mid-run triggers a uvicorn reload and can cause a 502/read-timeout on the first in-flight request. Workaround: create/save test files first, then wait ~5s (or `sudo supervisorctl restart backend`) before running pytest. Drafts feature is functional; only minor semantic concerns noted.",
+  "rca_of_the_issue": "Initial two test runs failed with read timeout on POST /api/drafts. Root cause: WatchFiles reloader inside uvicorn detected the newly-written /app/backend/tests/test_drafts.py and initiated a shutdown that waited on in-flight background tasks; the first POST hit during that window returned 502 via Cloudflare. Confirmed via /var/log/supervisor/backend.err.log 'WatchFiles detected changes in tests/test_drafts.py. Reloading...' and 'Waiting for background tasks to complete'. After `sudo supervisorctl restart backend` and re-running, all 5 tests passed in 9.49s."
+}

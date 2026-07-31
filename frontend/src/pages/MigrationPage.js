@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { toast } from "sonner";
-import { History, Plus, X } from "lucide-react";
+import { History, Plus, X, Save } from "lucide-react";
+import { DraftsDialog } from "@/components/DraftsDialog";
 
 const fmt = (n) => new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
@@ -26,6 +27,7 @@ export default function MigrationPage() {
   const [invForm, setInvForm] = useState({ customer_id: "", customer_name: "", customer_shop_name: "", supplier_id: "", supplier_name: "", supplier_invoice_number: "", invoice_number: "", created_at: "", items: [], notes: "" });
 
   const [returnedStock, setReturnedStock] = useState([]);
+  const [invDraftId, setInvDraftId] = useState(null);
 
   // Historical purchase
   const [purForm, setPurForm] = useState({ supplier_id: "", supplier_name: "", supplier_invoice_number: "", purchase_number: "", created_at: "", items: [], notes: "" });
@@ -167,6 +169,7 @@ export default function MigrationPage() {
       const { data } = await API.post("/invoices", payload);
       const linked = data.linked_purchase_number ? ` & purchase ${data.linked_purchase_number}` : "";
       toast.success(`Historical invoice ${data.invoice_number}${linked} created`);
+      if (invDraftId) { await API.delete(`/drafts/${invDraftId}`).catch(() => {}); setInvDraftId(null); }
       setInvForm({ customer_id: "", customer_name: "", customer_shop_name: "", supplier_id: "", supplier_name: "", supplier_invoice_number: "", invoice_number: "", created_at: "", items: [], notes: "" });
       load();
     } catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
@@ -380,7 +383,11 @@ export default function MigrationPage() {
             <Textarea placeholder="Notes" value={invForm.notes} onChange={e => setInvForm(f => ({ ...f, notes: e.target.value }))} className="min-h-[50px]" />
             <div className="flex justify-between items-center border-t pt-3">
               <span className="text-lg font-semibold">Total: Rs. {fmt(invTotal)}</span>
-              <Button onClick={submitHistoricalInvoice} className="bg-[#0F172A] hover:bg-[#1E293B] rounded-sm" data-testid="submit-hist-invoice">Create Historical Invoice</Button>
+              <div className="flex gap-2">
+                <DraftsDialog kind="historical_invoice" onResume={resumeInvDraft} />
+                <Button variant="outline" onClick={saveInvDraft} className="rounded-sm gap-1" data-testid="save-inv-draft-button"><Save size={14} /> Save as Draft</Button>
+                <Button onClick={submitHistoricalInvoice} className="bg-[#0F172A] hover:bg-[#1E293B] rounded-sm" data-testid="submit-hist-invoice">Create Historical Invoice</Button>
+              </div>
             </div>
           </CardContent></Card>
         </TabsContent>
