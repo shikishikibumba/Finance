@@ -31,7 +31,7 @@ async def create_draft(data: DraftIn, user=Depends(get_current_user)):
         "id": str(uuid.uuid4()),
         "kind": data.kind,
         "label": data.label or "Untitled draft",
-        "data": data.data or {},
+        "data": data.data if data.data is not None else {},
         "user_email": user.get("email", ""),
         "created_at": now,
         "updated_at": now,
@@ -50,7 +50,7 @@ async def update_draft(draft_id: str, data: DraftIn, user=Depends(get_current_us
         {"id": draft_id},
         {"$set": {
             "label": data.label or existing.get("label", "Untitled draft"),
-            "data": data.data or {},
+            "data": data.data if data.data is not None else existing.get("data", {}),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }}
     )
