@@ -27,6 +27,7 @@ class OrderCreate(BaseModel):
     customer_name: str
     items: List[OrderItemInput]
     notes: Optional[str] = ""
+    created_at: Optional[str] = None
 
 
 class OrderUpdate(BaseModel):
@@ -34,6 +35,7 @@ class OrderUpdate(BaseModel):
     customer_name: Optional[str] = None
     items: Optional[List[OrderItemInput]] = None
     notes: Optional[str] = None
+    created_at: Optional[str] = None
 
 
 class AssignSupplierInput(BaseModel):
@@ -267,7 +269,7 @@ async def create_order(data: OrderCreate, user=Depends(get_current_user)):
         "total_amount": round(total, 2),
         "status": "pending",
         "notes": data.notes or "",
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": data.created_at or datetime.now(timezone.utc).isoformat()
     }
     await db.orders.insert_one(doc)
     doc.pop("_id", None)
@@ -297,6 +299,8 @@ async def update_order(order_id: str, data: OrderUpdate, user=Depends(get_curren
         update_doc["customer_name"] = data.customer_name
     if data.notes is not None:
         update_doc["notes"] = data.notes
+    if data.created_at is not None:
+        update_doc["created_at"] = data.created_at
 
     if data.items is not None:
         # Release previously reserved returned_stock (we will re-reserve based on new items)

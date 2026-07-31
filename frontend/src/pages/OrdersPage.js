@@ -24,7 +24,7 @@ const emptyItem = () => ({
   source: "supplier",         // "supplier" or "returned_stock"
   returned_stock_id: "",
 });
-const emptyForm = () => ({ customer_id: "", customer_name: "", items: [], notes: "" });
+const emptyForm = () => ({ customer_id: "", customer_name: "", items: [], notes: "", created_at: "" });
 
 export default function OrdersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -182,11 +182,12 @@ export default function OrdersPage() {
       }
     }
     try {
+      const payload = { ...form, created_at: form.created_at ? new Date(form.created_at + "T12:00:00").toISOString() : undefined };
       if (editingId) {
-        await API.put(`/orders/${editingId}`, form);
+        await API.put(`/orders/${editingId}`, payload);
         toast.success("Order updated");
       } else {
-        await API.post("/orders", form);
+        await API.post("/orders", payload);
         toast.success("Order created");
       }
       setDialogOpen(false);
@@ -325,6 +326,11 @@ export default function OrdersPage() {
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase tracking-wider">Customer *</Label>
               <SearchableSelect options={customerOptions} value={form.customer_id} onSelect={selectCustomer} placeholder="Select customer..." searchPlaceholder="Search customers..." />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider">Order Date <span className="font-normal normal-case text-[10px] text-muted-foreground">(leave blank for today — set a past date to backdate)</span></Label>
+              <Input type="date" value={form.created_at} onChange={e => setForm(f => ({ ...f, created_at: e.target.value }))} data-testid="order-date-input" />
             </div>
 
             {/* Default Supplier: pre-fills new items so you don't pick supplier per-item.

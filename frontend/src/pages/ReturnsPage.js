@@ -27,7 +27,7 @@ export default function ReturnsPage() {
   const [form, setForm] = useState({ invoice_id: "", invoice: null, items: [], notes: "", destination: "warehouse", supplier_id: "", supplier_name: "", purchase_id: "", created_at: "" });
   const [suppliers, setSuppliers] = useState([]);
   const [purchases, setPurchases] = useState([]);
-  const [stockForm, setStockForm] = useState({ product_id: "", product_name: "", quantity: "", cost_price: "", unit_price: "", notes: "" });
+  const [stockForm, setStockForm] = useState({ product_id: "", product_name: "", quantity: "", cost_price: "", unit_price: "", notes: "", created_at: "" });
 
   const fetchData = useCallback(async () => {
     try {
@@ -142,10 +142,11 @@ export default function ReturnsPage() {
         cost_price: parseFloat(stockForm.cost_price),
         unit_price: parseFloat(stockForm.unit_price) || 0,
         notes: stockForm.notes,
+        created_at: stockForm.created_at ? new Date(stockForm.created_at + "T12:00:00").toISOString() : undefined,
       });
       toast.success("Opening stock added");
       setStockDialogOpen(false);
-      setStockForm({ product_id: "", product_name: "", quantity: "", cost_price: "", unit_price: "", notes: "" });
+      setStockForm({ product_id: "", product_name: "", quantity: "", cost_price: "", unit_price: "", notes: "", created_at: "" });
       fetchData();
     } catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
   };
@@ -445,6 +446,11 @@ export default function ReturnsPage() {
                 onChange={e => setStockForm(f => ({ ...f, unit_price: e.target.value }))}
                 placeholder="Selling price reference"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider">Stock Date <span className="font-normal normal-case text-[10px] text-muted-foreground">(optional — for backdated opening stock)</span></Label>
+              <Input type="date" value={stockForm.created_at} onChange={e => setStockForm(f => ({ ...f, created_at: e.target.value }))} data-testid="stock-date-input" />
             </div>
 
             <div className="space-y-2">

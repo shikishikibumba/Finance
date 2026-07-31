@@ -44,6 +44,8 @@ export default function MigrationPage() {
     cheques: [],
     allocations: [],
     notes: "",
+    related_customer_id: "",
+    related_customer_name: "",
   });
 
   // Opening balance
@@ -245,6 +247,8 @@ export default function MigrationPage() {
           amount: parseFloat(a.amount),
         })),
         notes: payForm.notes,
+        related_customer_id: payForm.payment_type === "supplier" ? (payForm.related_customer_id || "") : "",
+        related_customer_name: payForm.payment_type === "supplier" ? (payForm.related_customer_name || "") : "",
       };
       if (payForm.created_at) payload.created_at = payForm.created_at + "T12:00:00";
       await API.post("/payments", payload);
@@ -252,7 +256,7 @@ export default function MigrationPage() {
       setPayForm({
         payment_type: "customer", entity_id: "", entity_name: "", amount: "", payment_method: "cash",
         created_at: "", cheque_number: "", bank_name: "", cheque_date: "",
-        cheques: [], allocations: [], notes: "",
+        cheques: [], allocations: [], notes: "", related_customer_id: "", related_customer_name: "",
       });
       load();
     } catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
@@ -446,6 +450,17 @@ export default function MigrationPage() {
                   placeholder="Select..."
                 />
               </div>
+              {payForm.payment_type === "supplier" && (
+                <div>
+                  <Label className="text-xs uppercase">Customer (internal ref)</Label>
+                  <SearchableSelect
+                    options={customerOptions}
+                    value={payForm.related_customer_id}
+                    onSelect={id => setPayForm(f => ({ ...f, related_customer_id: id, related_customer_name: customers.find(c => c.id === id)?.name || "" }))}
+                    placeholder="Link a customer (optional)..."
+                  />
+                </div>
+              )}
               <div><Label className="text-xs uppercase">Amount *</Label><Input type="number" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} data-testid="hist-pay-amount" /></div>
               <div>
                 <Label className="text-xs uppercase">Method</Label>

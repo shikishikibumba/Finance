@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
-from database import db
+from database import db, get_next_sequence
 from auth import get_current_user
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
@@ -165,8 +165,11 @@ async def create_payment(data: PaymentCreate, user=Depends(get_current_user)):
                 detail=f"Allocation total ({alloc_total}) exceeds payment amount ({data.amount})"
             )
 
+    seq = await get_next_sequence("payments")
+    payment_number = f"PAY-{seq:04d}"
     doc = {
         "id": str(uuid.uuid4()),
+        "payment_number": payment_number,
         "payment_type": data.payment_type,
         "entity_id": data.entity_id,
         "entity_name": data.entity_name,

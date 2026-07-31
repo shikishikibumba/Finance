@@ -1,0 +1,19 @@
+{
+  "summary": "Backend-only verification of 5 bug/feature items in Commercial Trading v1.1 (BUG 1 opening stock note+date, BUG 2 ledger payment ref, BUG 2b payment auto-number, BUG 3 backdated order, BUG 4 supplier payment related_customer, FEATURE 5 cheque-inventory filters/sort). Created /app/backend/tests/test_v1_1_1_bugs.py with 11 pytest cases hitting the LIVE preview URL and Firebase admin token. ALL 11 TESTS PASS. All ephemeral records created during testing were cleaned up (verified by final cleanup test).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_v1_1_1_bugs.py",
+    "/app/test_reports/pytest/v1_1_1_bugs.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": ["/app/backend/tests/test_v1_1_1_bugs.py (new)"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "n/a (skipped per request)"},
+  "seed_data_creation": "Ephemeral test records created and DELETED in the same run: 2 payments (customer PAY-*, supplier PAY-*), 1 order (backdated 2024-01-15), 1 returned_stock opening entry (backdated 2024-02-20, note 'QA opening note'). No leftover ids — verified by test_zzz_cleanup_verify. No pre-existing records modified. Rich Ceramic customer ledger inspected read-only.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@example.com / admin123 via Firebase REST (idToken); backend base https://trade-audit-v1.preview.emergentagent.com/api",
+  "context_for_next_testing_agent": "All 5 v1.1.1 bug items verified. Reproduce with: pytest /app/backend/tests/test_v1_1_1_bugs.py -v (~26s). The warehouse /api/warehouse/stock endpoint returns a dict {items:[...]} not a bare list — tests handle both shapes. BUG 2 refs verified against Rich Ceramic (customer 4e413aa4-df43-4d5d-926a-b6b5e989caac) and against the first supplier with payment entries.",
+  "rca_of_the_issue": "N/A — all target bugs are fixed. Only test-side note: initial version of BUG 1 test assumed /api/warehouse/stock returned a list; it actually returns {items:[...]}. Adjusted test in-scope."
+}
