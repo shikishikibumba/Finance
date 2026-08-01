@@ -393,9 +393,22 @@ async def create_invoice_from_order(order_id: str, data: Optional[InvoiceFromOrd
 
 @router.delete("/{invoice_id}")
 async def delete_invoice(invoice_id: str, user=Depends(get_current_user)):
-    result = await db.invoices.delete_one({"id": invoice_id})
-    if result.deleted_count == 0:
+    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    # Reverse any returned_stock (warehouse) consumption from this invoice's lines.
+    for it in invoice.get("items", []):
+        if it.get("source") == "returned_stock" and it.get("returned_stock_id"):
+            await db.returned_stock.update_one(
+                {"id": it["returned_stock_id"]},
+                {"$inc": {"quantity_used": -float(it.get("quantity", 0) or 0)}}
+            )
+    # Cascade-delete the auto-generated linked purchase (direct-to-customer, no
+    # standalone value) so no orphan payable is left behind.
+    lp = invoice.get("linked_purchase_id")
+    if lp:
+        await db.purchases.delete_one({"id": lp, "auto_generated": True})
+    await db.invoices.delete_one({"id": invoice_id})
     return {"message": "Invoice deleted"}
 
 
