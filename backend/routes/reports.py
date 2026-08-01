@@ -74,10 +74,18 @@ async def customer_outstanding(customer_id: str, user=Depends(get_current_user))
 
     total_outstanding = round(opening + invoices_total - payments_total - returns_total - manual_settled_total, 2)
 
-    # FIFO application for per-invoice display
-    pool = payments_total
-    opening_remaining = opening
-    ap = min(pool, max(opening_remaining, 0)); pool = round(pool - ap, 2)
+    # FIFO application for per-invoice display.
+    # Honor EXPLICIT payment→invoice allocations first, then apply the remaining
+    # (unallocated) payment pool oldest-first. Total stays account-based.
+    alloc_res = await db.payments.aggregate([
+        {"$match": {"payment_type": "customer", "entity_id": customer_id}},
+        {"$unwind": "$allocations"},
+        {"$group": {"_id": "$allocations.reference_id", "total": {"$sum": "$allocations.amount"}}}
+    ]).to_list(5000)
+    explicit_alloc = {a["_id"]: float(a["total"] or 0) for a in alloc_res}
+    explicit_total = round(sum(explicit_alloc.values()), 2)
+    pool = round(max(payments_total - explicit_total, 0.0), 2)  # unallocated advance pool
+    ap = min(pool, max(opening, 0)); pool = round(pool - ap, 2)  # opening consumed first
 
     inv_sorted = sorted(invoices, key=lambda i: i.get("created_at", ""))
     report_items = []
@@ -86,15 +94,17 @@ async def customer_outstanding(customer_id: str, user=Depends(get_current_user))
         returned = returns_map.get(inv["id"], 0)
         settled = manual_settled_map.get(inv["id"], 0)
         net = round(total_amt - returned - settled, 2)
-        applied = min(pool, max(net, 0)); pool = round(pool - applied, 2)
-        balance = round(net - applied, 2)
+        applied_explicit = min(explicit_alloc.get(inv["id"], 0), max(net, 0))
+        remaining = round(net - applied_explicit, 2)
+        applied_fifo = min(pool, max(remaining, 0)); pool = round(pool - applied_fifo, 2)
+        balance = round(remaining - applied_fifo, 2)
         if balance > 0.01 or returned > 0.01:
             report_items.append({
                 "invoice_number": inv["invoice_number"],
                 "invoice_id": inv["id"],
                 "date": inv["created_at"][:10],
                 "total_amount": total_amt,
-                "paid": round(applied + settled, 2),
+                "paid": round(applied_explicit + applied_fifo + settled, 2),
                 "returned": round(returned, 2),
                 "balance": balance,
                 "status": inv.get("status", "unpaid")
