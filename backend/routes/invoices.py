@@ -277,6 +277,7 @@ async def create_invoice(data: InvoiceCreate, user=Depends(get_current_user)):
             "total_amount": round(purchase_total, 2),
             "auto_generated": True,
             "manual_number": False,
+            "destination": "direct_customer",
             "linked_invoice_id": doc["id"],
             "linked_invoice_number": invoice_number,
             "notes": f"Auto-created from historical invoice {invoice_number}",

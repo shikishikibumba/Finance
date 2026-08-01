@@ -318,7 +318,7 @@ export default function PurchasesPage() {
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Destination</p>
-                  <p className="font-medium" data-testid="purchase-detail-destination">{(selected.destination || "warehouse") === "direct_customer" ? "Direct Customer Supply" : "Warehouse Stock"}</p>
+                  <p className="font-medium" data-testid="purchase-detail-destination">{(selected.auto_generated || selected.linked_invoice_id || selected.linked_invoice_number || (selected.destination || "warehouse") === "direct_customer") ? "Direct Customer Supply" : "Warehouse Stock"}</p>
                 </div>
               </div>
               <div className="border-t pt-3">

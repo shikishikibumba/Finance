@@ -1,0 +1,31 @@
+{
+  "summary": "Backend-only regression for v1.1 warehouse/auto-purchase separation. All 5 pytest cases pass against LIVE Firestore. Primary bug (historical invoice auto-purchase must NOT add warehouse stock), latent bug (force-editing an auto-generated linked purchase to destination=warehouse must STILL not sync stock), and both regression paths (manual purchase destination=warehouse DOES add stock; destination=direct_customer does NOT) all behave correctly. Every invoice/purchase created during the run was deleted; per-product on_hand and value returned to baseline. Live-DB concurrency observed on grand_total_value so assertions were scoped to the target product (P/P2) rather than the global total.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/invoices/{id}", "issue": "Deleting an invoice does NOT cascade-delete its auto-generated linked_purchase. The linked purchase remains in the payables ledger orphaned to a deleted invoice. Test compensates by explicitly deleting the linked purchase; production users would leak orphan auto-purchases."},
+      {"endpoint": "PUT /api/purchases/{id}", "issue": "Server accepts destination='warehouse' on an auto_generated / linked_invoice_id purchase and persists it. The stock sync correctly refuses, but exposing a value that the sync silently ignores is confusing — consider rejecting the update with 400 or coercing back to 'direct_customer'."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_v1_1_warehouse_autopurchase.py",
+    "/app/test_reports/pytest/warehouse_autopurchase.xml"
+  ],
+  "action_items": [
+    "Consider cascade-deleting linked auto-purchase when its parent invoice is deleted (or reject invoice delete while linked purchase has payments).",
+    "Consider rejecting PUT /api/purchases updates that attempt to change destination on auto_generated purchases (or explicitly document that destination is ignored for them)."
+  ],
+  "critical_code_review_comments": [
+    "invoices.delete_invoice() only removes the invoice document; the linked auto-generated purchase (linked_invoice_id) is left behind — orphan risk on real data.",
+    "purchases.update_purchase() persists 'destination' even for auto_generated purchases; only the sync guard prevents stock corruption. A malicious/UI mistake will still show 'warehouse' in the ledger without adding stock — inconsistent state."
+  ],
+  "updated_files": ["/app/backend/tests/test_v1_1_warehouse_autopurchase.py"],
+  "success_rate": {"backend": "100%", "frontend": "n/a"},
+  "seed_data_creation": "All test records deleted before finish: 2 invoices + 2 linked auto-purchases + 2 manual purchases, all removed. Warehouse per-product on_hand and value returned to captured baselines.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@example.com / admin123 (Firebase)",
+  "context_for_next_testing_agent": "Runs against LIVE Firestore 'commercial-trading1'. Because live grand_total_value fluctuates during a test (other users transact), assert only against the per-product on_hand/value delta for the products under test — NOT the global grand_total. Always clean up both the invoice AND its linked_purchase_id explicitly; DELETE /api/invoices does not cascade. Use two DIFFERENT products (P, P2) so the historical-invoice test and the warehouse-purchase regression don't interfere.",
+  "rca_of_the_issue": "Root fix verified: _sync_warehouse_stock() short-circuits when purchase.auto_generated or linked_invoice_id is set, and create_purchase only calls it when destination=='warehouse'. Historical invoice creation stamps destination='direct_customer', auto_generated=True, linked_invoice_id on the auto-purchase. Warehouse pool remains untouched in all invoice-linked paths, including the latent case of a forced PUT destination=warehouse. Regression paths behave: destination=warehouse writes a returned_stock lot (source=warehouse_purchase); DELETE removes the unused lot restoring baseline."
+}

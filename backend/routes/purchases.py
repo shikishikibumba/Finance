@@ -63,6 +63,12 @@ async def _sync_warehouse_stock(purchase: dict):
     """Register warehouse-destination purchase items as sellable on-hand stock
     in the returned_stock pool (source=warehouse_purchase). Idempotent per
     (purchase_id, product_id)."""
+    # Auto-generated purchases (created from an invoice / historical invoice) send
+    # goods DIRECT to the customer — they must NEVER increase warehouse stock,
+    # regardless of any destination value. Only purchases entered directly on the
+    # Purchasing page do.
+    if purchase.get("auto_generated") or purchase.get("linked_invoice_id"):
+        return
     existing = await db.returned_stock.find(
         {"source": "warehouse_purchase", "purchase_id": purchase["id"]}, {"_id": 0}
     ).to_list(1000)
