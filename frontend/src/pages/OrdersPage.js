@@ -41,6 +41,7 @@ export default function OrdersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [draftId, setDraftId] = useState(null);
+  const [draftLabel, setDraftLabel] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [form, setForm] = useState(emptyForm());
@@ -99,13 +100,17 @@ export default function OrdersPage() {
   const openNew = () => {
     setEditingId(null);
     setDraftId(null);
+    setDraftLabel("");
     setForm(emptyForm());
     setDialogOpen(true);
   };
 
   const saveDraft = async () => {
+    const name = window.prompt("Name this draft:", draftLabel || form.customer_name || "");
+    if (name === null) return;
+    setDraftLabel(name);
     try {
-      const body = { kind: "order", label: form.customer_name || "Untitled order", data: form };
+      const body = { kind: "order", label: name || form.customer_name || "Untitled order", data: form };
       const res = draftId ? await API.put(`/drafts/${draftId}`, body) : await API.post("/drafts", body);
       setDraftId(res.data.id);
       toast.success("Draft saved — resume it anytime from Drafts");
@@ -124,6 +129,20 @@ export default function OrdersPage() {
     });
     setDialogOpen(true);
   };
+
+  // Autosave open draft every ~3s of inactivity (create flow only)
+  useEffect(() => {
+    if (!dialogOpen || editingId) return;
+    if (!form.customer_id && (form.items || []).length === 0) return;
+    const t = setTimeout(async () => {
+      try {
+        const body = { kind: "order", label: draftLabel || form.customer_name || "Untitled order", data: form };
+        const res = draftId ? await API.put(`/drafts/${draftId}`, body) : await API.post("/drafts", body);
+        if (!draftId) setDraftId(res.data.id);
+      } catch { /* silent autosave */ }
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [form, dialogOpen, editingId, draftId, draftLabel]);
 
   const openEdit = async (orderId) => {
     try {

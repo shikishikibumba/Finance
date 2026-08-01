@@ -60,6 +60,7 @@ class PaymentUpdate(BaseModel):
     payment_reference: Optional[str] = None
     related_customer_id: Optional[str] = None
     related_customer_name: Optional[str] = None
+    created_at: Optional[str] = None
 
 
 async def recalc_invoice_status(invoice_id: str):
@@ -286,6 +287,8 @@ async def update_payment(payment_id: str, data: PaymentUpdate, user=Depends(get_
         update_doc["related_customer_id"] = data.related_customer_id
     if data.related_customer_name is not None:
         update_doc["related_customer_name"] = data.related_customer_name
+    if data.created_at is not None:
+        update_doc["created_at"] = data.created_at
     update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.payments.update_one({"id": payment_id}, {"$set": update_doc})

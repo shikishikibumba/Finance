@@ -133,6 +133,25 @@ export default function MigrationPage() {
   const rmInvItem = (idx) => setInvForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   const invTotal = invForm.items.reduce((s, i) => s + (parseFloat(i.quantity) || 0) * (parseFloat(i.unit_price) || 0), 0);
 
+  const saveInvDraft = async () => {
+    const name = window.prompt("Name this draft:", invForm.customer_name || "");
+    if (name === null) return;
+    try {
+      const body = { kind: "historical_invoice", label: name || invForm.customer_name || "Untitled invoice", data: invForm };
+      const res = invDraftId ? await API.put(`/drafts/${invDraftId}`, body) : await API.post("/drafts", body);
+      setInvDraftId(res.data.id);
+      toast.success("Draft saved — resume it anytime from Drafts");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed to save draft"); }
+  };
+
+  const resumeInvDraft = (data, id) => {
+    setInvForm({
+      customer_id: "", customer_name: "", customer_shop_name: "", supplier_id: "", supplier_name: "",
+      supplier_invoice_number: "", invoice_number: "", created_at: "", items: [], notes: "", ...data,
+    });
+    setInvDraftId(id);
+  };
+
   const submitHistoricalInvoice = async () => {
     if (!invForm.customer_id) { toast.error("Select customer"); return; }
     const supplierItems = invForm.items.filter(i => (i.source || "supplier") === "supplier");

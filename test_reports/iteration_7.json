@@ -1,0 +1,30 @@
+{
+  "summary": "Backend-only testing of v1.1.2 (5 items) against LIVE Firestore via public URL. 7/7 pytest tests passed. Verified: (BUG1) customer & supplier ledger closing_balance is IDENTICAL with/without date_from filter — running balance computed over ALL transactions, only DISPLAY is filtered; opening_forward returned; each displayed entry carries a running balance. (BUG5) /api/reports/customer-outstanding is account-based; total_paid matches sum of GET /api/payments?payment_type=customer&entity_id=..., response includes total_paid + advance + opening_balance; formula opening + invoices - payments - returns - manual_settled holds. (BUG5b) POST /invoices/{id}/settle drops total_outstanding by the invoice's balance and hides/zeroes the invoice; /unsettle exactly restores prior outstanding (net-zero on live data). (BUG2) PUT /api/payments/{id} with {created_at:'2023-05-10T...'} updates and persists; GET reflects year 2023; payment deleted after test. (FEATURE 3/4) POST /api/drafts stores 'Farhan - Monday order' label verbatim; PUT changes label/data and bumps updated_at; GET /api/drafts?kind=order includes it; DELETE cleans it up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/drafts/{id}", "issue": "DraftIn requires `kind` on update but the handler never applies data.kind — a client sending a wrong/omitted kind sees no effect (kind cannot be edited). Either accept partial payload or apply/validate kind on update. (Carry-over from iteration 6.)"},
+      {"endpoint": "PUT /api/drafts/{id}", "issue": "`label` uses `data.label or existing.label` — an explicit empty string cannot be saved. Prefer `data.label if data.label is not None else existing.label`. (Carry-over.)"},
+      {"endpoint": "GET /api/reports/customer-ledger", "issue": "`opening_forward` is returned as opening_balance when the range starts BEFORE the first transaction (i.e., no rows precede the range). This is arguably correct, but callers relying on it to always equal running-total-just-before-first-displayed-row should be aware."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_v1_1_2_bugs.py",
+    "/app/test_reports/pytest/v1_1_2_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/invoices.py: /settle allows amount=0/negative silently and only rejects 'already fully settled'. Consider explicit 400 for amount <= 0 vs None (currently coerced to 'full outstanding').",
+    "routes/payments.py: PaymentUpdate.created_at accepts any string with no ISO validation — a malformed date can now silently corrupt ledgers/reports which sort/format on created_at. Add pydantic validator (or datetime type) to reject non-ISO input.",
+    "routes/reports.py customer_outstanding: payments_total pools ALL payments (including those explicitly allocated to invoices) and re-FIFOs them for display; this can make an invoice with an explicit allocation appear paid by an older bill's FIFO share. Total outstanding is correct, but per-invoice 'paid' can disagree with the payment allocation the user chose. Consider honoring explicit allocations first, then FIFO for the residual."
+  ],
+  "updated_files": ["/app/backend/tests/test_v1_1_2_bugs.py"],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "seed_data_creation": "Created + DELETED 1 customer payment (amount 1, cash) and 1 order draft ('Farhan - Monday order'). Manual-settled 1 outstanding invoice then /unsettle'd it — net-zero on live data. Cleanup verified by test_zzz_cleanup_verify.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@example.com / admin123 (Firebase REST → id token as Bearer).",
+  "context_for_next_testing_agent": "All 5 v1.1.2 items pass end-to-end. Backend hot-reload watches /app/backend recursively including tests/ — write tests first then wait ~5s or `sudo supervisorctl restart backend` before pytest to avoid a first-request 502. Ledger + outstanding formulas are internally consistent; minor concerns noted are semantic/UX, not blockers. If retesting outstanding on a customer that has payments with explicit invoice allocations, note the FIFO redistribution mentioned in critical_code_review_comments.",
+  "rca_of_the_issue": "N/A — no failures."
+}

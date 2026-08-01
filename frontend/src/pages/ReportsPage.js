@@ -62,6 +62,15 @@ export default function ReportsPage() {
   const customerOptions = customers.map(c => ({ value: c.id, label: `${c.name}${c.shop_name ? ` (${c.shop_name})` : ""}` }));
   const supplierOptions = suppliers.map(s => ({ value: s.id, label: s.name }));
 
+  const settleInvoice = async (invId) => {
+    if (!window.confirm("Mark this invoice as fully settled? This reduces the customer's outstanding.")) return;
+    try {
+      await API.post(`/invoices/${invId}/settle`, { amount: null, note: "Settled from Customer Outstanding" });
+      toast.success("Invoice settled");
+      fetchCustomerReport(selectedCustomerId);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed to settle"); }
+  };
+
   const fetchCustomerReport = async (cid) => {
     setLoading(true);
     try { const { data } = await API.get(`/reports/customer-outstanding/${cid}`); setCustomerReport(data); }
@@ -394,6 +403,7 @@ export default function ReportsPage() {
                       <th className="text-right py-2 text-xs font-bold uppercase">Paid</th>
                       <th className="text-right py-2 text-xs font-bold uppercase">Returns</th>
                       <th className="text-right py-2 text-xs font-bold uppercase">Balance</th>
+                      <th className="text-right py-2 text-xs font-bold uppercase">Action</th>
                     </tr></thead>
                     <tbody>
                       {customerReport.items.map((item, idx) => (
@@ -405,6 +415,9 @@ export default function ReportsPage() {
                           <td className="text-right">Rs. {fmt(item.paid)}</td>
                           <td className="text-right text-amber-700">Rs. {fmt(item.returned)}</td>
                           <td className="text-right font-semibold">Rs. {fmt(item.balance)}</td>
+                          <td className="text-right">
+                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => settleInvoice(item.invoice_id)} data-testid={`settle-outstanding-${item.invoice_id}`}>Settle</Button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

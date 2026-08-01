@@ -58,37 +58,49 @@ async def customer_outstanding(customer_id: str, user=Depends(get_current_user))
         amt = float(r.get("total_amount", 0) or 0)
         returns_map[r["invoice_id"]] = returns_map.get(r["invoice_id"], 0) + amt
 
-    report_items = []
-    total_outstanding = 0
-    for inv in invoices:
-        alloc_result = await db.payments.aggregate([
-            {"$match": {"payment_type": "customer"}},
-            {"$unwind": "$allocations"},
-            {"$match": {"allocations.reference_id": inv["id"]}},
-            {"$group": {"_id": None, "total": {"$sum": "$allocations.amount"}}}
-        ]).to_list(1)
-        paid = alloc_result[0]["total"] if alloc_result else 0
-        returned = returns_map.get(inv["id"], 0)
-        balance = inv["total_amount"] - paid - returned
+    # Account-based outstanding: total billed minus ALL payments/returns/settlements.
+    # Payments are applied FIFO (oldest first) for per-invoice display, because the
+    # user may not tag which specific bill a payment settles.
+    manual_settled_map = {inv["id"]: float(inv.get("manual_settled_amount", 0) or 0) for inv in invoices}
+    payments_total_res = await db.payments.aggregate([
+        {"$match": {"payment_type": "customer", "entity_id": customer_id}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]).to_list(1)
+    payments_total = float(payments_total_res[0]["total"]) if payments_total_res else 0.0
+    returns_total = round(sum(returns_map.values()), 2)
+    manual_settled_total = round(sum(manual_settled_map.values()), 2)
+    invoices_total = round(sum(float(inv.get("total_amount", 0)) for inv in invoices), 2)
+    opening = float(customer.get("opening_balance", 0))
 
-        # Include invoices with outstanding balance OR with credit-note activity
-        # so users can see how returns impacted each invoice.
+    total_outstanding = round(opening + invoices_total - payments_total - returns_total - manual_settled_total, 2)
+
+    # FIFO application for per-invoice display
+    pool = payments_total
+    opening_remaining = opening
+    ap = min(pool, max(opening_remaining, 0)); pool = round(pool - ap, 2)
+
+    inv_sorted = sorted(invoices, key=lambda i: i.get("created_at", ""))
+    report_items = []
+    for inv in inv_sorted:
+        total_amt = float(inv.get("total_amount", 0))
+        returned = returns_map.get(inv["id"], 0)
+        settled = manual_settled_map.get(inv["id"], 0)
+        net = round(total_amt - returned - settled, 2)
+        applied = min(pool, max(net, 0)); pool = round(pool - applied, 2)
+        balance = round(net - applied, 2)
         if balance > 0.01 or returned > 0.01:
             report_items.append({
                 "invoice_number": inv["invoice_number"],
                 "invoice_id": inv["id"],
                 "date": inv["created_at"][:10],
-                "total_amount": inv["total_amount"],
-                "paid": paid,
+                "total_amount": total_amt,
+                "paid": round(applied + settled, 2),
                 "returned": round(returned, 2),
-                "balance": round(balance, 2),
+                "balance": balance,
                 "status": inv.get("status", "unpaid")
             })
-            if balance > 0.01:
-                total_outstanding += balance
-
-    opening = float(customer.get("opening_balance", 0))
-    total_outstanding += opening
+    report_items.sort(key=lambda x: x["date"], reverse=True)
+    advance = round(pool, 2)  # unapplied customer payment (credit balance)
 
     # Build credit-note annexure (full list, regardless of balance)
     annexure = [{
@@ -116,6 +128,8 @@ async def customer_outstanding(customer_id: str, user=Depends(get_current_user))
         "opening_balance": round(opening, 2),
         "items": report_items,
         "total_outstanding": round(total_outstanding, 2),
+        "total_paid": round(payments_total, 2),
+        "advance": advance,
         "credit_notes": annexure,
         "credit_notes_total": round(sum(c["total_amount"] for c in annexure), 2),
         "generated_at": datetime.now(timezone.utc).isoformat()
@@ -569,15 +583,16 @@ async def customer_ledger(customer_id: str, date_from: Optional[str] = None,
     entries = []
     opening = float(customer.get("opening_balance", 0) or 0)
     opening_date = customer.get("opening_balance_date", "") or ""
-    # If opening balance has a date, exclude transactions that pre-date it
-    # (they are assumed to be embedded in the opening figure).
-    effective_from = opening_date if (opening_date and (not date_from or opening_date > date_from)) else date_from
 
+    def _after_opening(d):
+        return not (opening_date and d and d[:10] < opening_date[:10])
+
+    all_entries = []
     invoices = await db.invoices.find({"customer_id": customer_id}, {"_id": 0}).to_list(5000)
     for inv in invoices:
-        if not _in_range(inv.get("created_at", ""), effective_from, date_to):
+        if not _after_opening(inv.get("created_at", "")):
             continue
-        entries.append({
+        all_entries.append({
             "date": inv.get("created_at", "")[:10],
             "type": "invoice",
             "ref": inv.get("invoice_number", ""),
@@ -590,10 +605,10 @@ async def customer_ledger(customer_id: str, date_from: Optional[str] = None,
         {"payment_type": "customer", "entity_id": customer_id}, {"_id": 0}
     ).to_list(5000)
     for p in payments:
-        if not _in_range(p.get("created_at", ""), effective_from, date_to):
+        if not _after_opening(p.get("created_at", "")):
             continue
         desc, cheque_detail = _payment_ledger_desc(p)
-        entries.append({
+        all_entries.append({
             "date": p.get("created_at", "")[:10],
             "type": "payment",
             "ref": p.get("payment_number") or p.get("payment_reference") or "Payment",
@@ -607,11 +622,10 @@ async def customer_ledger(customer_id: str, date_from: Optional[str] = None,
     returns = await db.returns.find({"customer_id": customer_id}, {"_id": 0}).to_list(5000)
     for r in returns:
         if r.get("destination") == "supplier":
-            # Supplier-bound credit note doesn't reduce customer outstanding
             continue
-        if not _in_range(r.get("created_at", ""), effective_from, date_to):
+        if not _after_opening(r.get("created_at", "")):
             continue
-        entries.append({
+        all_entries.append({
             "date": r.get("created_at", "")[:10],
             "type": "credit_note",
             "ref": r.get("credit_note_number") or r.get("return_number", ""),
@@ -620,11 +634,22 @@ async def customer_ledger(customer_id: str, date_from: Optional[str] = None,
             "credit": round(float(r.get("total_amount", 0)), 2),
         })
 
-    entries.sort(key=lambda e: (e["date"], e["type"]))
+    all_entries.sort(key=lambda e: (e["date"], e["type"]))
+    # Running balance is computed over ALL transactions; the date range only filters
+    # which rows are DISPLAYED. Closing balance always equals the true total.
     running = opening
-    for e in entries:
+    carried = opening
+    started = False
+    display = []
+    for e in all_entries:
+        prev = running
         running = round(running + float(e["debit"]) - float(e["credit"]), 2)
         e["balance"] = running
+        if _in_range(e["date"], date_from, date_to):
+            if not started:
+                carried = prev
+                started = True
+            display.append(e)
 
     return {
         "customer_id": customer_id,
@@ -632,7 +657,8 @@ async def customer_ledger(customer_id: str, date_from: Optional[str] = None,
         "customer_shop": customer.get("shop_name", ""),
         "opening_balance": round(opening, 2),
         "opening_balance_date": opening_date,
-        "entries": entries,
+        "opening_forward": round(carried, 2),
+        "entries": display,
         "closing_balance": round(running, 2),
         "date_from": date_from,
         "date_to": date_to,
@@ -650,12 +676,15 @@ async def supplier_ledger(supplier_id: str, date_from: Optional[str] = None,
     entries = []
     opening = float(supplier.get("opening_balance", 0) or 0)
     opening_date = supplier.get("opening_balance_date", "") or ""
-    effective_from = opening_date if (opening_date and (not date_from or opening_date > date_from)) else date_from
 
+    def _after_opening(d):
+        return not (opening_date and d and d[:10] < opening_date[:10])
+
+    all_entries = []
     purchases = await db.purchases.find({"supplier_id": supplier_id}, {"_id": 0}).to_list(5000)
     for p in purchases:
-        if _in_range(p.get("created_at", ""), effective_from, date_to):
-            entries.append({
+        if _after_opening(p.get("created_at", "")):
+            all_entries.append({
                 "date": p.get("created_at", "")[:10],
                 "type": "purchase",
                 "ref": p.get("purchase_number", ""),
@@ -663,11 +692,10 @@ async def supplier_ledger(supplier_id: str, date_from: Optional[str] = None,
                 "debit": 0,
                 "credit": round(float(p.get("total_amount", 0)), 2),
             })
-        # Supplier credit notes from adjustments
         for adj in p.get("supplier_return_adjustments", []) or []:
-            if not _in_range(adj.get("adjusted_at", ""), effective_from, date_to):
+            if not _after_opening(adj.get("adjusted_at", "")):
                 continue
-            entries.append({
+            all_entries.append({
                 "date": adj.get("adjusted_at", "")[:10],
                 "type": "credit_note",
                 "ref": adj.get("credit_note_number") or adj.get("return_number", ""),
@@ -680,10 +708,10 @@ async def supplier_ledger(supplier_id: str, date_from: Optional[str] = None,
         {"payment_type": "supplier", "entity_id": supplier_id}, {"_id": 0}
     ).to_list(5000)
     for p in payments:
-        if not _in_range(p.get("created_at", ""), effective_from, date_to):
+        if not _after_opening(p.get("created_at", "")):
             continue
         desc, cheque_detail = _payment_ledger_desc(p)
-        entries.append({
+        all_entries.append({
             "date": p.get("created_at", "")[:10],
             "type": "payment",
             "ref": p.get("payment_number") or p.get("payment_reference") or "Payment",
@@ -694,19 +722,29 @@ async def supplier_ledger(supplier_id: str, date_from: Optional[str] = None,
             "cheques": cheque_detail,
         })
 
-    entries.sort(key=lambda e: (e["date"], e["type"]))
+    all_entries.sort(key=lambda e: (e["date"], e["type"]))
+    # Running balance over ALL transactions; date range filters only what is shown.
     running = opening
-    for e in entries:
-        # Supplier ledger: credits grow payable; debits reduce it.
+    carried = opening
+    started = False
+    display = []
+    for e in all_entries:
+        prev = running
         running = round(running + float(e["credit"]) - float(e["debit"]), 2)
         e["balance"] = running
+        if _in_range(e["date"], date_from, date_to):
+            if not started:
+                carried = prev
+                started = True
+            display.append(e)
 
     return {
         "supplier_id": supplier_id,
         "supplier_name": supplier.get("name", ""),
         "opening_balance": round(opening, 2),
         "opening_balance_date": opening_date,
-        "entries": entries,
+        "opening_forward": round(carried, 2),
+        "entries": display,
         "closing_balance": round(running, 2),
         "date_from": date_from,
         "date_to": date_to,

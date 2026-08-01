@@ -27,6 +27,7 @@ const emptyForm = (payment_type = "customer") => ({
   cheque_number: "",
   bank_name: "",
   cheque_date: "",
+  created_at: "",
   cheques: [],
   allocations: [],
   notes: "",
@@ -147,6 +148,7 @@ export default function PaymentsPage() {
         cheque_number: data.cheque_number || "",
         bank_name: data.bank_name || "",
         cheque_date: data.cheque_date || "",
+        created_at: data.created_at ? data.created_at.slice(0, 10) : "",
         cheques: data.cheques || [],
         allocations: data.allocations || [],
         notes: data.notes || "",
@@ -258,6 +260,7 @@ export default function PaymentsPage() {
       related_customer_id: form.payment_type === "supplier" ? (form.related_customer_id || "") : "",
       related_customer_name: form.payment_type === "supplier" ? (form.related_customer_name || "") : "",
       endorsed_cheque_ids: form.payment_type === "supplier" ? (form.endorsed_cheque_ids || []) : [],
+      created_at: form.created_at ? new Date(form.created_at + "T12:00:00").toISOString() : undefined,
     };
 
     try {
@@ -409,6 +412,11 @@ export default function PaymentsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider">Payment Date</Label>
+              <Input type="date" value={form.created_at || ""} onChange={e => setForm(f => ({ ...f, created_at: e.target.value }))} data-testid="payment-date-input" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
