@@ -1,25 +1,21 @@
 # Commercial Trading — v1.1 (Finance repo) — Working Notes
 
 ## Environment
-- Runs against client's LIVE Firestore `commercial-trading1` (⚠️ REAL production data).
-- Admin: admin@example.com / admin123 (Firebase). firebase-service-account.json + REACT_APP_FIREBASE_* wired.
-- Data layer firestore_db.py = Motor-style shim; routes use the `db` API.
+- LIVE Firestore `commercial-trading1` (⚠️ REAL production data). Admin: admin@example.com / admin123 (Firebase).
+- firestore_db.py = Motor-style shim; routes use `db`.
 
-## Delivered (all verified by testing agent on live Firestore)
-- Products #9/#10/#11; Invoice list #15 filters/sorts + #19 page 20; print items 10→20.
-- Payment #3 reference (auto PAY-XXXX) + #20 related customer + endorse cheques.
-- Ledger #4 multi-cheque collapse+drilldown. Purchase #12/#13 destination. Warehouse #16/#17/#18 (unified returned_stock pool). Bank dropdown in Migration payment.
-- Settle/Unsettle: reversible; buttons REMOVED from invoice list (kept in Customer Outstanding report).
-- Bug round: ledger payment ref sensible, backdated order, supplier-payment customer ref (+Migration), opening-stock date/notes, Cheque Inventory confirmed complete.
-- Drafts feature: drafts collection + DraftsDialog; Orders + Migration historical invoice. Autosave (Orders, 3s) + custom naming (prompt).
+## Key modules delivered (all testing-agent verified)
+- Products #9/#10/#11; Invoice list filters/sort/page-20; Payments (ref auto PAY-XXXX, related customer, endorse cheques, editable date); Ledger multi-cheque collapse; Purchase destination; Warehouse valuation (unified returned_stock pool); Bank dropdown in Migration; Drafts (autosave + naming); Settle/Unsettle (reversible).
+- Auto-purchases from invoices are destination=direct_customer, never touch warehouse; invoice delete cascades linked auto-purchase + reverses stock.
 
-## Latest session (v1.1.2) — verified 7/7
-1. Ledger date range is DISPLAY-ONLY: running balance computed over ALL txns; closing_balance = true total regardless of filter; adds opening_forward. (customer + supplier ledger)
-2. Payment dates editable: PaymentUpdate.created_at + PaymentsPage date field.
-3. Draft autosave (Orders).
-4. Draft custom naming (prompt) on Orders + Migration.
-5. Customer Outstanding is ACCOUNT-BASED: total = opening + invoices - ALL payments - returns - manual_settled. Per-invoice display honors explicit allocations first, then FIFO the unallocated pool; returns 'advance' + 'total_paid'. Manual "Settle" button per row in Reports→Customer Outstanding (uses /invoices/{id}/settle, reversible via /unsettle).
+## Latest fix (v1.1.3) — Customer Outstanding
+BUG: Haseena Ceramic showed NEGATIVE outstanding because bills were BOTH manually settled AND paid → formula subtracted manual_settled AND payments (double count).
+FIX (routes/reports.py customer_outstanding):
+- total_outstanding = opening + billed - payments - returns  (manual_settled REMOVED from the math; it's only a per-invoice display status now). Payments are the source of truth.
+- Per-invoice FIFO uses payments only (explicit allocations first, then oldest-first pool). Balances never negative; overpayment surfaces as `advance`.
+- Added date_from/date_to query params: filters invoices + payments + returns to the window; opening excluded when date_from set. Returns date_from/date_to.
+- Frontend ReportsPage: From/To date inputs + Apply/Clear on the Customer Outstanding tab (data-testid cust-out-from / cust-out-to / cust-out-apply / cust-out-clear).
 
 ## Notes
-- Products have no dedicated code field (search matches name/id).
-- Reviewer minor (non-blocking): add ISO validation for PaymentUpdate.created_at; drafts PUT ignores `kind`.
+- Manual "Settle" button remains in Customer Outstanding but no longer double-deducts (payments drive the total).
+- Products have no code field (search matches name/id).

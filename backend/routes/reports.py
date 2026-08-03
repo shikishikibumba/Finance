@@ -82,7 +82,7 @@ async def customer_outstanding(customer_id: str, date_from: Optional[str] = None
     returns_total = round(sum(returns_map.values()), 2)
     invoices_total = round(sum(float(inv.get("total_amount", 0)) for inv in invoices), 2)
     # Opening balance applies only to a full (unfiltered) statement.
-    opening = float(customer.get("opening_balance", 0)) if not date_from else 0.0
+    opening = float(customer.get("opening_balance", 0)) if not (date_from or date_to) else 0.0
 
     total_outstanding = round(opening + invoices_total - payments_total - returns_total, 2)
 
