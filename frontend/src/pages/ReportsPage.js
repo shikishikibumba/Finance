@@ -23,6 +23,8 @@ export default function ReportsPage() {
   const [customers, setCustomers] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [custOutFrom, setCustOutFrom] = useState("");
+  const [custOutTo, setCustOutTo] = useState("");
   const [customerReport, setCustomerReport] = useState(null);
   const [globalReport, setGlobalReport] = useState(null);
   const [supplierReport, setSupplierReport] = useState(null);
@@ -72,8 +74,9 @@ export default function ReportsPage() {
   };
 
   const fetchCustomerReport = async (cid) => {
+    if (!cid) { setCustomerReport(null); return; }
     setLoading(true);
-    try { const { data } = await API.get(`/reports/customer-outstanding/${cid}`); setCustomerReport(data); }
+    try { const { data } = await API.get(`/reports/customer-outstanding/${cid}`, { params: { date_from: custOutFrom || undefined, date_to: custOutTo || undefined } }); setCustomerReport(data); }
     catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -381,6 +384,20 @@ export default function ReportsPage() {
           <div className="flex gap-3 items-end flex-wrap">
             <div className="w-72">
               <SearchableSelect options={customerOptions} value={selectedCustomerId} onSelect={(id) => { setSelectedCustomerId(id); fetchCustomerReport(id); }} placeholder="Select customer..." />
+            </div>
+            <div className="flex items-end gap-1">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">From</label>
+                <input type="date" value={custOutFrom} onChange={(e) => setCustOutFrom(e.target.value)} className="h-9 rounded-sm border px-2 text-sm" data-testid="cust-out-from" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">To</label>
+                <input type="date" value={custOutTo} onChange={(e) => setCustOutTo(e.target.value)} className="h-9 rounded-sm border px-2 text-sm" data-testid="cust-out-to" />
+              </div>
+              <Button variant="outline" size="sm" className="rounded-sm h-9" onClick={() => fetchCustomerReport(selectedCustomerId)} disabled={!selectedCustomerId} data-testid="cust-out-apply">Apply</Button>
+              {(custOutFrom || custOutTo) && (
+                <Button variant="ghost" size="sm" className="rounded-sm h-9" onClick={() => { setCustOutFrom(""); setCustOutTo(""); setTimeout(() => fetchCustomerReport(selectedCustomerId), 0); }} data-testid="cust-out-clear">Clear</Button>
+              )}
             </div>
             <Button variant="outline" size="sm" className="rounded-sm" onClick={printCustomerOutstanding} disabled={!customerReport} data-testid="print-customer-outstanding"><Printer size={14} className="mr-1" /> Print</Button>
           </div>

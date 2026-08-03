@@ -22,12 +22,14 @@ def _date_filter(date_from: Optional[str], date_to: Optional[str]):
 # Customer Outstanding (with credit-note annexure data)
 # ────────────────────────────────────────────────────────────────────────────
 @router.get("/customer-outstanding/{customer_id}")
-async def customer_outstanding(customer_id: str, user=Depends(get_current_user)):
+async def customer_outstanding(customer_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, user=Depends(get_current_user)):
     customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
     if not customer:
         return {"error": "Customer not found"}
 
     invoices = await db.invoices.find({"customer_id": customer_id}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    if date_from or date_to:
+        invoices = [i for i in invoices if _in_range(i.get("created_at", ""), date_from, date_to)]
 
     # Customer-side returns. Two matching strategies to be safe with legacy data:
     #   1. returns tagged with this customer_id
@@ -55,45 +57,45 @@ async def customer_outstanding(customer_id: str, user=Depends(get_current_user))
         all_returns.append(r)
     returns_map = {}
     for r in all_returns:
+        if (date_from or date_to) and not _in_range(r.get("created_at", ""), date_from, date_to):
+            continue
         amt = float(r.get("total_amount", 0) or 0)
         returns_map[r["invoice_id"]] = returns_map.get(r["invoice_id"], 0) + amt
 
-    # Account-based outstanding: total billed minus ALL payments/returns/settlements.
-    # Payments are applied FIFO (oldest first) for per-invoice display, because the
-    # user may not tag which specific bill a payment settles.
-    manual_settled_map = {inv["id"]: float(inv.get("manual_settled_amount", 0) or 0) for inv in invoices}
-    payments_total_res = await db.payments.aggregate([
-        {"$match": {"payment_type": "customer", "entity_id": customer_id}},
-        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-    ]).to_list(1)
-    payments_total = float(payments_total_res[0]["total"]) if payments_total_res else 0.0
-    returns_total = round(sum(returns_map.values()), 2)
-    manual_settled_total = round(sum(manual_settled_map.values()), 2)
-    invoices_total = round(sum(float(inv.get("total_amount", 0)) for inv in invoices), 2)
-    opening = float(customer.get("opening_balance", 0))
-
-    total_outstanding = round(opening + invoices_total - payments_total - returns_total - manual_settled_total, 2)
-
-    # FIFO application for per-invoice display.
-    # Honor EXPLICIT payment→invoice allocations first, then apply the remaining
-    # (unallocated) payment pool oldest-first. Total stays account-based.
-    alloc_res = await db.payments.aggregate([
-        {"$match": {"payment_type": "customer", "entity_id": customer_id}},
-        {"$unwind": "$allocations"},
-        {"$group": {"_id": "$allocations.reference_id", "total": {"$sum": "$allocations.amount"}}}
-    ]).to_list(5000)
-    explicit_alloc = {a["_id"]: float(a["total"] or 0) for a in alloc_res}
+    # Account-based outstanding = opening + billed - payments received - returns.
+    # Payments are the source of truth; manual "Settle" is only a per-invoice
+    # display marker and is NOT subtracted again (that caused double-counting when
+    # a bill was both settled AND paid, producing negative totals).
+    all_payments = await db.payments.find(
+        {"payment_type": "customer", "entity_id": customer_id}, {"_id": 0}
+    ).to_list(5000)
+    if date_from or date_to:
+        all_payments = [p for p in all_payments if _in_range(p.get("created_at", ""), date_from, date_to)]
+    payments_total = round(sum(float(p.get("amount", 0) or 0) for p in all_payments), 2)
+    explicit_alloc = {}
+    for p in all_payments:
+        for a in (p.get("allocations") or []):
+            rid = a.get("reference_id")
+            explicit_alloc[rid] = explicit_alloc.get(rid, 0) + float(a.get("amount", 0) or 0)
     explicit_total = round(sum(explicit_alloc.values()), 2)
-    pool = round(max(payments_total - explicit_total, 0.0), 2)  # unallocated advance pool
-    ap = min(pool, max(opening, 0)); pool = round(pool - ap, 2)  # opening consumed first
+
+    returns_total = round(sum(returns_map.values()), 2)
+    invoices_total = round(sum(float(inv.get("total_amount", 0)) for inv in invoices), 2)
+    # Opening balance applies only to a full (unfiltered) statement.
+    opening = float(customer.get("opening_balance", 0)) if not date_from else 0.0
+
+    total_outstanding = round(opening + invoices_total - payments_total - returns_total, 2)
+
+    # FIFO per-invoice display: explicit allocations first, then unallocated pool.
+    pool = round(max(payments_total - explicit_total, 0.0), 2)
+    ap = min(pool, max(opening, 0)); pool = round(pool - ap, 2)
 
     inv_sorted = sorted(invoices, key=lambda i: i.get("created_at", ""))
     report_items = []
     for inv in inv_sorted:
         total_amt = float(inv.get("total_amount", 0))
         returned = returns_map.get(inv["id"], 0)
-        settled = manual_settled_map.get(inv["id"], 0)
-        net = round(total_amt - returned - settled, 2)
+        net = round(total_amt - returned, 2)
         applied_explicit = min(explicit_alloc.get(inv["id"], 0), max(net, 0))
         remaining = round(net - applied_explicit, 2)
         applied_fifo = min(pool, max(remaining, 0)); pool = round(pool - applied_fifo, 2)
@@ -104,7 +106,7 @@ async def customer_outstanding(customer_id: str, user=Depends(get_current_user))
                 "invoice_id": inv["id"],
                 "date": inv["created_at"][:10],
                 "total_amount": total_amt,
-                "paid": round(applied_explicit + applied_fifo + settled, 2),
+                "paid": round(applied_explicit + applied_fifo, 2),
                 "returned": round(returned, 2),
                 "balance": balance,
                 "status": inv.get("status", "unpaid")
@@ -140,6 +142,8 @@ async def customer_outstanding(customer_id: str, user=Depends(get_current_user))
         "total_outstanding": round(total_outstanding, 2),
         "total_paid": round(payments_total, 2),
         "advance": advance,
+        "date_from": date_from,
+        "date_to": date_to,
         "credit_notes": annexure,
         "credit_notes_total": round(sum(c["total_amount"] for c in annexure), 2),
         "generated_at": datetime.now(timezone.utc).isoformat()

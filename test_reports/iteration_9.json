@@ -1,0 +1,26 @@
+{
+  "summary": "Backend testing of v1.1.3 Customer Outstanding bug-fix + new date filter against LIVE Firestore. 6/6 tests passed. Haseena Ceramic outstanding is now POSITIVE (812675) — matches independent recompute (opening 0 + billed 2455975 - payments 1562800 - returns 80500). manual_settled (1412800) is no longer subtracted (previous bug produced negative ~-519625). Rich Ceramic matches (1845575). No negative per-invoice balances. Date filter (date_from/date_to, and date_from-only) correctly filters items, echoes params, and zeroes opening_balance when date_from set. Manual settle/unsettle regression confirms outstanding is UNCHANGED after settle (net-zero after unsettle, both restored cleanly).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/reports/customer-outstanding/{id}", "issue": "Review-request 'expected ~893175' for Haseena ignored returns of 80500; actual expected and returned = 812675. Not a bug — request note used billed-payments only. Confirming here for the record."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_v1_1_3_customer_outstanding.py",
+    "/app/test_reports/pytest/v1_1_3_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "reports.customer_outstanding: opening_balance is intentionally excluded when date_from is set. Consider also excluding when only date_to is set (currently opening applies if only date_to used) — verify with product; may be intended."
+  ],
+  "updated_files": ["/app/backend/tests/test_v1_1_3_customer_outstanding.py"],
+  "success_rate": {"backend": "100%", "frontend": "n/a"},
+  "seed_data_creation": "None. Only mutation: settled+unsettled invoice 3897 (Haseena) — net-zero, verified restored.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Firebase admin@example.com / admin123 (from /app/memory/test_credentials.md)",
+  "context_for_next_testing_agent": "test_v1_1_3_customer_outstanding.py covers Haseena+Rich outstanding correctness, no-negative-balance, date filter (from+to, from only), and settle/unsettle regression. All PASS against live Firestore. Independent recompute helper uses /api/invoices?customer_id, /api/payments, /api/returns.",
+  "rca_of_the_issue": "Previous formula subtracted BOTH manual_settled and payments causing double-count when a bill was manually marked settled AND had a real payment. Fixed by removing manual_settled from the subtraction (payments are source of truth); manual_settled remains only as a per-invoice display marker. Confirmed by Haseena numbers turning from -519625 (billed - payments - manual_settled - returns) to +812675 (billed - payments - returns)."
+}
