@@ -68,7 +68,6 @@ const baseStyles = `
 
 /* --------- INVOICE ---------- */
 function renderInvoiceHtml(inv, opts = {}) {
-  const orientation = opts.orientation || "landscape";
   const items = inv.items || [];
   const pages = chunk(items, ITEMS_PER_PAGE);
   if (pages.length === 0) pages.push([]);
@@ -312,8 +311,8 @@ function openPrintWindow(html) {
 }
 
 export function printInvoice(invoice, opts = {}) {
-  // Always print A5 landscape for consistency (matches the pre-printed tray stock).
-  openPrintWindow(renderInvoiceHtml(invoice, { orientation: "landscape" }));
+  // Always A4 portrait, 10 items/page (see @page rule in renderInvoiceHtml).
+  openPrintWindow(renderInvoiceHtml(invoice));
 }
 
 export function printCreditNote(creditNote, invoice = null) {
