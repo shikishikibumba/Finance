@@ -181,7 +181,7 @@ function renderInvoiceHtml(inv, opts = {}) {
 <html><head><meta charset="utf-8"/>
 <title>Invoice ${escape(inv.invoice_number)}</title>
 <style>
-  @page { size: A5 landscape; margin: 8mm 0; }
+  @page { size: A4 portrait; margin: 12mm 0; }
   ${baseStyles}
 </style>
 </head>
