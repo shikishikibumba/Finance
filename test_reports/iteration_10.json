@@ -1,0 +1,20 @@
+{
+  "summary": "Verified invoice print bug fix: consistent A5 landscape orientation, 10 items/page pagination with repeated header on each page, and totals/notes only on the last page. Tested via Playwright by opening the print popup (window.print stubbed via addInitScript) and asserting on generated HTML/CSS for 5 invoices with varied sizes (2, 10, 12, 18 items) and item name lengths (including >40 chars).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "seed_data_creation": "None (read-only tests against existing invoices)",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@example.com / admin123 (from /app/memory/test_credentials.md)",
+  "context_for_next_testing_agent": "Bug fix for A5 landscape printing verified end-to-end. Print popup is opened via window.open + setTimeout(window.print, 350). To inspect, stub window.print via context.add_init_script('window.print = function(){};') BEFORE clicking [data-testid=\"print-invoice-button\"], listen for popup with page.context.expect_page(), then read popup.content(). Key assertions verified: (1) @page contains 'size: A5 landscape' for ALL invoices regardless of item name length (long-name >40char invoice #3892 correctly renders as A5 landscape - old portrait heuristic gone); (2) ceil(items/10) '.page' sections with header repeated per page (Bill To, brand 'Commercial Trading', 'Item'/'Qty'/'Unit Price'/'Amount' thead); (3) Totals ('Total Due') + notes ('Returns Policy', 'Credit Terms', 'Thank you for your business') appear ONLY on the last page. Tested invoices: #3889 (2 items, 1 page), #3892 (10 items long-name, 1 page), #3895 (12 items, 2 pages), #3817 (18 items, 2 pages -> page1 has 10 rows w/o totals, page2 has 8 rows w/ totals+notes).",
+  "rca_of_the_issue": "Previous implementation had a heuristic that switched to portrait for invoices containing long item names and used 20 items/page. Fix in /app/frontend/src/lib/print.js sets ITEMS_PER_PAGE=10, hardcodes @page 'A5 landscape', chunks items into '.page' sections each with a full repeated header and only emits totals/notes block when isLast. All assertions in the request confirmed as passing."
+}

@@ -9,7 +9,7 @@ const fmt = (n) =>
     n || 0
   );
 
-const ITEMS_PER_PAGE = 20;
+const ITEMS_PER_PAGE = 10;
 
 const escape = (s) =>
   String(s ?? "")
@@ -181,7 +181,7 @@ function renderInvoiceHtml(inv, opts = {}) {
 <html><head><meta charset="utf-8"/>
 <title>Invoice ${escape(inv.invoice_number)}</title>
 <style>
-  @page { size: A4 ${orientation}; margin: 10mm 0; }
+  @page { size: A5 landscape; margin: 8mm 0; }
   ${baseStyles}
 </style>
 </head>
@@ -312,11 +312,8 @@ function openPrintWindow(html) {
 }
 
 export function printInvoice(invoice, opts = {}) {
-  // Heuristic: long product names or many cols → portrait; default landscape.
-  const orientation =
-    opts.orientation ||
-    ((invoice.items || []).some((i) => (i.product_name || "").length > 40) ? "portrait" : "landscape");
-  openPrintWindow(renderInvoiceHtml(invoice, { orientation }));
+  // Always print A5 landscape for consistency (matches the pre-printed tray stock).
+  openPrintWindow(renderInvoiceHtml(invoice, { orientation: "landscape" }));
 }
 
 export function printCreditNote(creditNote, invoice = null) {
