@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Filter, ArrowsClockwise, Receipt, Banknote } from "lucide-react";
+import { Plus, Filter, RefreshCw, Receipt, Banknote } from "lucide-react";
 
 const STATUS_STYLES = {
   "Available": "bg-blue-100 text-blue-800 border-blue-200",

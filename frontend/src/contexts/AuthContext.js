@@ -18,7 +18,7 @@ export function AuthProvider({ children }) {
       const { data } = await API.get("/auth/me");
       setUser(data);
     } catch (e) {
-      console.warn("Failed to fetch profile:", e);
+      console.error("Failed to fetch profile:", e?.response?.status, e?.response?.data);
       setUser(false);
     }
   }, []);

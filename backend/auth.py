@@ -45,14 +45,22 @@ async def get_current_user(request: Request) -> dict:
     # Custom claims (set by admin on user creation)
     role = decoded.get("role") or "user"
 
-    # Pull profile from Firestore /users/{uid} (kept in sync on create)
-    profile = await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0}) or {}
+    # Prefer the token's own claims so auth never depends on a Firestore read.
+    name = decoded.get("name") or (email.split("@")[0] if email else "user")
+
+    # Best-effort profile enrichment — must NOT break login if Firestore is down/throttled.
+    try:
+        profile = await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0}) or {}
+        name = profile.get("name") or name
+        role = profile.get("role") or role
+    except Exception as e:
+        logger.warning(f"Profile read skipped (Firestore unavailable): {e}")
 
     return {
         "id": uid,
         "email": email,
-        "name": profile.get("name") or decoded.get("name") or email.split("@")[0],
-        "role": profile.get("role") or role,
+        "name": name,
+        "role": role,
     }
 
 

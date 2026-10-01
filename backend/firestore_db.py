@@ -40,6 +40,7 @@ from copy import deepcopy
 
 import firebase_admin
 from firebase_admin import credentials, firestore as admin_firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,17 @@ _fs = admin_firestore.client()
 # ─── Helpers ────────────────────────────────────────────────────────────────
 def _is_op_dict(v: Any) -> bool:
     return isinstance(v, dict) and any(k.startswith("$") for k in v.keys())
+
+
+def _split_query(query: dict):
+    """Separate top-level equality fields (pushable to Firestore) from the rest."""
+    eq, remaining = {}, {}
+    for k, v in (query or {}).items():
+        if k in ("$or", "$and") or "." in k or (isinstance(v, dict) and _is_op_dict(v)):
+            remaining[k] = v
+        else:
+            eq[k] = v
+    return eq, remaining
 
 
 def _resolve_path(doc: dict, path: str):
@@ -381,15 +393,28 @@ class FirestoreCollection:
         self._col = _fs.collection(name)
 
     # ── reads ────────────────────────────────────────────────────────────
-    async def _fetch_all(self) -> list:
+    async def _fetch_all(self, query: Optional[dict] = None) -> list:
         loop = asyncio.get_running_loop()
-        snaps = await loop.run_in_executor(None, lambda: list(self._col.stream()))
-        return [s.to_dict() for s in snaps if s.exists]
+        eq, _ = _split_query(query or {})
+
+        # Fast path: single-document lookup by id → 1 read instead of a full scan.
+        if len(eq) == 1 and "id" in eq:
+            def _get_one():
+                snap = self._col.document(str(eq["id"])).get()
+                return [snap.to_dict()] if snap.exists else []
+            return await loop.run_in_executor(None, _get_one)
+
+        def _run():
+            q = self._col
+            for field, value in eq.items():
+                q = q.where(filter=FieldFilter(field, "==", value))
+            return [s.to_dict() for s in q.stream() if s.exists]
+        return await loop.run_in_executor(None, _run)
 
     def find(self, query: Optional[dict] = None, projection: Optional[dict] = None,
              sort=None):
         async def _do():
-            all_docs = await self._fetch_all()
+            all_docs = await self._fetch_all(query or {})
             filtered = [d for d in all_docs if _doc_matches(d, query or {})]
             projected = [_apply_projection(d, projection) for d in filtered]
             return projected
@@ -401,7 +426,7 @@ class FirestoreCollection:
 
     async def find_one(self, query: Optional[dict] = None, projection: Optional[dict] = None,
                        sort=None):
-        all_docs = await self._fetch_all()
+        all_docs = await self._fetch_all(query or {})
         filtered = [d for d in all_docs if _doc_matches(d, query or {})]
         if sort:
             for f, dirn in reversed(sort if isinstance(sort, list) else [(sort, 1)]):
@@ -415,7 +440,7 @@ class FirestoreCollection:
             loop = asyncio.get_running_loop()
             snap = await loop.run_in_executor(None, lambda: self._col.count().get())
             return snap[0][0].value
-        docs = await self._fetch_all()
+        docs = await self._fetch_all(query)
         return sum(1 for d in docs if _doc_matches(d, query))
 
     # ── writes ───────────────────────────────────────────────────────────
@@ -439,7 +464,7 @@ class FirestoreCollection:
         return type("Result", (), {"inserted_ids": [d["id"] for d in docs]})()
 
     async def update_one(self, query: dict, update: dict, upsert: bool = False):
-        all_docs = await self._fetch_all()
+        all_docs = await self._fetch_all(query)
         match = next((d for d in all_docs if _doc_matches(d, query)), None)
         loop = asyncio.get_running_loop()
         if match is None:
@@ -461,7 +486,7 @@ class FirestoreCollection:
         return type("Result", (), {"modified_count": 0 if before == match else 1, "matched_count": 1})()
 
     async def update_many(self, query: dict, update: dict):
-        all_docs = await self._fetch_all()
+        all_docs = await self._fetch_all(query)
         matches = [d for d in all_docs if _doc_matches(d, query)]
         loop = asyncio.get_running_loop()
         def _bulk():
@@ -475,7 +500,7 @@ class FirestoreCollection:
         return type("Result", (), {"modified_count": len(matches), "matched_count": len(matches)})()
 
     async def delete_one(self, query: dict):
-        all_docs = await self._fetch_all()
+        all_docs = await self._fetch_all(query)
         match = next((d for d in all_docs if _doc_matches(d, query)), None)
         if not match:
             return type("Result", (), {"deleted_count": 0})()
@@ -484,7 +509,7 @@ class FirestoreCollection:
         return type("Result", (), {"deleted_count": 1})()
 
     async def delete_many(self, query: dict):
-        all_docs = await self._fetch_all()
+        all_docs = await self._fetch_all(query)
         matches = [d for d in all_docs if _doc_matches(d, query)]
         loop = asyncio.get_running_loop()
         def _bulk():
